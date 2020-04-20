@@ -6,9 +6,12 @@ import torch
 import torchaudio
 from datasets import DSD100, MixTransform
 from models import ClassicChimera
+from models import ChimeraPlusPlus
 
 def main():
-    batch_size = 2
+    net_type = ChimeraPlusPlus
+    model_file = 'model_epoch9.pth'
+    batch_size = 12
     orig_freq = 44100
     target_freq = 16000
     seconds = 5
@@ -36,8 +39,8 @@ def main():
             x = t(x)
         return x
 
-    model = ClassicChimera(freq_bins, spec_time, 2, 20)
-    model.load_state_dict(torch.load('model_epoch9.pth'))
+    model = net_type(freq_bins, spec_time, 2, 20)
+    model.load_state_dict(torch.load(model_file))
 
     batch = transform(next(iter(dataloader)))
     X = batch[:, 2, :, :, :]
