@@ -10,10 +10,11 @@ def loss_dc(embd, label):
         - 2 * torch.sum(torch.matmul(embd.transpose(1, 2), label) ** 2)
 
 def loss_dc_whitend(embd, label):
+    C = label.shape[2]
     D = embd.shape[2]
-    VtV = torch.matmul(embd.transpose(1, 2), embd)
+    VtV = torch.matmul(embd.transpose(1, 2), embd) + 1e-9 * torch.eye(D)
     VtY = torch.matmul(embd.transpose(1, 2), label)
-    YtY = torch.matmul(label.transpose(1, 2), label)
+    YtY = torch.matmul(label.transpose(1, 2), label) + 1e-9 * torch.eye(C)
     return embd.shape[0] * D - torch.trace(torch.sum(
         torch.matmul(torch.matmul(torch.matmul(
             VtV.inverse(), VtY), YtY.inverse()), VtY.transpose(1, 2)),
