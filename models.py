@@ -22,10 +22,15 @@ class ClassicChimera(torch.nn.Module):
         out_embd_shape = (B, self.time*self.freq_bins, self.embd_dims)
         out_mask_shape = (B, self.n_channels, self.freq_bins, self.time)
         out_blstm, _ = self.blstm_layer(x.transpose(1, 2)) # (B, T, 2*N)
-        out_embd = self.embd_layer(out_blstm) # (B, T, F*D)
-        out_mask = self.mask_layer(out_embd) # (B, T, F*C)
-        return out_embd.reshape(*out_embd_shape), \
-            out_mask.transpose(1, 2).reshape(*out_mask_shape)
+        out_z = self.embd_layer(out_blstm) # (B, T, F*D)
+        out_embd = torch.tanh(out_z) # (B, T, F*D)
+        out_embd = out_embd.reshape(*out_embd_shape) # (B, F*T, D)
+        out_embd = out_embd \
+            / torch.sqrt(torch.sum(out_embd**2, dim=-1, keepdim=True))
+        out_mask = self.mask_layer(out_z) # (B, T, F*C)
+        out_mask = out_mask.transpose(1, 2).reshape(*out_mask_shape) # (B, C, F, T)
+        out_mask = torch.nn.Softmax(dim=1)(out_mask)
+        return out_embd, out_mask
 
 class Chimera(torch.nn.Module):
     pass
