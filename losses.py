@@ -28,7 +28,7 @@ def loss_dc_whitend(embd, label):
 # source and mixture are obtained from torch.stft
 def loss_mi_msa(mask, mixture, sources):
     C = mask.shape[1]
-    abs_comp = lambda X: torch.sqrt(torch.sum(X**2, -1))
+    abs_comp = lambda X: torch.sqrt(torch.sum(X**2, -1).clamp(min=1e-12))
     phase_comp = lambda X: torch.atan2(*X.split(1, dim=-1)[::-1]).squeeze()
     abs_X = abs_comp(mixture)
     abs_S = abs_comp(sources)
@@ -39,7 +39,7 @@ def loss_mi_msa(mask, mixture, sources):
 
 def loss_mi_tpsa(mask, mixture, sources, gamma=1, L=1):
     C = mask.shape[1]
-    abs_comp = lambda X: torch.sqrt(torch.sum(X**2, -1))
+    abs_comp = lambda X: torch.sqrt(torch.sum(X**2, -1).clamp(min=1e-12))
     phase_comp = lambda X: torch.atan2(*X.split(1, dim=-1)[::-1]).squeeze(-1)
     abs_X = abs_comp(mixture.unsqueeze(1))
     phase_X = phase_comp(mixture.unsqueeze(1))
