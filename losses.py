@@ -1,4 +1,5 @@
 import torch
+from math import pi
 from itertools import permutations
 
 # loss functions for deep clustering head
@@ -74,3 +75,60 @@ def loss_wa(source_pred, source_true):
             torch.sum(torch.abs(torch.stack(s) - _source_true))
             for s in permutations(_source_pred)
         ) for _source_pred, _source_true in zip(source_pred, source_true))
+
+# loss for cross entropy phasebook
+# phase_prob_pred: (batch_size, n_channels, freq_bin, time, book_size)
+# phase_true: (batch_size, n_channels, freq_bin, time, 2) (complex) or
+#             (batch_size, n_channels, freq_bin, time) (phase in radias)
+# phasebook: phasebook
+def loss_ce_phase(phase_prob_pred, phase_true, phasebook):
+    if len(phase_true.shape) == 5: # treat as complex number
+        phase_true_norm = phase_true\
+            / torch.sqrt(torch.sum(phase_true**2, dim=-1).clamp(min=1e-12))\
+            .unsqueeze(-1)
+        phase_true = torch.atan2(*phase_true_norm.split(1, dim=-1)[::-1])
+        phase_true = phase_true.squeeze(-1)
+    phase_ref_idx = torch.argmin(
+        torch.min(
+            (phasebook.view(1,1,1,1,-1)-phase_true.unsqueeze(-1)) % (2*pi),
+            (phase_true.unsqueeze(-1)-phasebook.view(1,1,1,1,-1)) % (2*pi)
+        ),
+        dim=-1
+    )
+    return sum(min(
+        torch.sum(-torch.log(
+            torch.stack(p).gather(-1, _ref_idx.unsqueeze(-1))
+            .squeeze(-1).clamp(min=1e-36)
+        ))
+        for p in permutations(_prob)
+    ) for _prob, _ref_idx in zip(phase_prob_pred, phase_ref_idx))
+
+# loss function for spectrogram (complex domain)
+# com_pred: (batch_size, n_channels, freq_bin, spec_time, 2)
+# mixture: (batch_size, freq_bin, spec_time, 2)
+# sources: (batch_size, n_channels, freq_bin, spec_time, 2)
+def loss_csa(com_pred, mixture, sources, L=1):
+    comp_mul = lambda X, Y: torch.stack(
+        (X.unbind(-1)[0] * Y.unbind(-1)[0] - X.unbind(-1)[1] * Y.unbind(-1)[1],
+         X.unbind(-1)[0] * Y.unbind(-1)[1] + X.unbind(-1)[1] * Y.unbind(-1)[0]),
+        dim=-1
+    )
+    abs_comp = lambda X: torch.sqrt(torch.sum(X**2, -1).clamp(min=1e-12))
+    phase_comp = lambda X: torch.atan2(*X.split(1, dim=-1)[::-1]).squeeze(-1)
+
+    if L == 1:
+        return sum(min(
+            torch.sum(abs_comp(
+                comp_mul(torch.stack(c), _mixture.unsqueeze(0)) - _sources
+            ))
+            for c in permutations(_com)
+        ) for _com, _mixture, _sources in zip(com_pred, mixture, sources))
+    elif L == 2:
+        return sum(min(
+            torch.sum(abs_comp(
+                comp_mul(torch.stack(c), _mixture.unsqueeze(0)) - _sources
+            ) ** L)
+            for c in permutations(_com)
+        ) for _com, _mixture, _sources in zip(com_pred, mixture, sources))
+    else:
+        raise NotImplementedError()
