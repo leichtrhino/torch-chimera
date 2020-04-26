@@ -16,18 +16,22 @@ class MisiLayer(torch.nn.Module):
     def forward(self, mag, phase, mixture):
         batch_size, n_channels, freq_bins, spec_time = mag.shape
         waveform_length = mixture.shape[-1]
+        Shat = mag.unsqueeze(-1) * phase
+        shat = torchaudio.functional.istft(
+            Shat.reshape(batch_size*n_channels, freq_bins, spec_time, 2),
+            self.n_fft, self.hop_length, self.win_length
+        ).reshape(batch_size, n_channels, waveform_length)
         for _ in range(self.layer_num):
-            S = mag.unsqueeze(-1) * phase
-            s = torchaudio.functional.istft(
-                S.reshape(batch_size*n_channels, freq_bins, spec_time, 2),
-                self.n_fft, self.hop_length, self.win_length
-            ).reshape(batch_size, n_channels, waveform_length)
-            delta = mixture - torch.sum(s, dim=1)
-            shat = s + delta.unsqueeze(1) / n_channels
+            delta = mixture - torch.sum(shat, dim=1)
+            shat_tmp = shat + delta.unsqueeze(1) / n_channels
             Shat = torch.stft(
-                shat.reshape(batch_size*n_channels, waveform_length),
+                shat_tmp.reshape(batch_size*n_channels, waveform_length),
                 self.n_fft, self.hop_length, self.win_length
             ).reshape(batch_size, n_channels, freq_bins, spec_time, 2)
-            Shat_mag = torch.sqrt(torch.sum(Shat**2, dim=-1).clamp(min=1e-9))
-            phase = Shat / Shat_mag.unsqueeze(-1)
-        return phase
+            Shat_mag = torch.sqrt(torch.sum(Shat**2, dim=-1).clamp(min=1e-24))
+            thetahat = Shat / Shat_mag.unsqueeze(-1)
+            shat = torchaudio.functional.istft(
+                Shat.reshape(batch_size*n_channels, freq_bins, spec_time, 2),
+                self.n_fft, self.hop_length, self.win_length
+            ).reshape(batch_size, n_channels, waveform_length)
+        return thetahat, shat
