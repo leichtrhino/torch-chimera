@@ -5,7 +5,7 @@ import math
 import torch
 import torchaudio
 from datasets import DSD100, MixTransform
-from models import ClassicChimera
+from models import ChimeraClassic
 from losses import loss_mi_msa, loss_dc
 
 def main():
@@ -37,7 +37,7 @@ def main():
             x = t(x)
         return x
 
-    model = ClassicChimera(freq_bins, spec_time, 2, 20)
+    model = ChimeraClassic(freq_bins, spec_time, 2, 20)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     for epoch in range(10):
