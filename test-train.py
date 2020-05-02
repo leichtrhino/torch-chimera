@@ -39,21 +39,27 @@ def main():
             x = t(x)
         return x
 
-    my_stft = lambda x: torch.stft(
+    stft = lambda x: torch.stft(
             x.reshape(x.shape[:-1].numel(), seconds * target_freq),
             n_fft, hop_length, win_length
         ).reshape(*x.shape[:-1], freq_bins, spec_time, 2)
-    my_istft = lambda X: torchaudio.istft(
-        X, n_fft, hop_length, win_length
+    comp_mul = lambda X, Y: torch.stack(
+        (X.unbind(-1)[0] * Y.unbind(-1)[0] - X.unbind(-1)[1] * Y.unbind(-1)[1],
+         X.unbind(-1)[0] * Y.unbind(-1)[1] + X.unbind(-1)[1] * Y.unbind(-1)[0]),
+        dim=-1
     )
 
-    initial_epoch = 9 # start at 0
-    train_epoch = 11
-    loss_function = 'chimera++' # 'chimera++', 'mask', 'wave'
+    initial_model = None #'model-dc.pth'
+    initial_epoch = 25 # start at 0
+    train_epoch = 5
+    loss_function = 'mask' # 'chimera++', 'mask', 'wave'
     model = ChimeraMagPhasebook(freq_bins, spec_time, 2, 20, N=600)
+    if initial_model is not None:
+        model.load_state_dict(torch.load(initial_model))
     if initial_epoch > 0:
         model.load_state_dict(torch.load(f'model_epoch{initial_epoch-1}.pth'))
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    misiLayer = MisiLayer(n_fft, hop_length, win_length, layer_num=5)
 
     for epoch in range(initial_epoch, initial_epoch+train_epoch):
         sum_loss = 0
@@ -62,7 +68,7 @@ def main():
         for step, batch in enumerate(dataloader):
             batch = transform(batch)
             x, s = batch[:, 2, :], batch[:, :2, :]
-            X, S = my_stft(x), my_stft(s)
+            X, S = stft(x), stft(s)
             X_abs = torch.sqrt(torch.sum(X**2, dim=-1))
             X_phase = X / X_abs.clamp(min=1e-12).unsqueeze(-1)
             S_abs = torch.sqrt(torch.sum(S**2, dim=-1))
@@ -80,27 +86,13 @@ def main():
             # compute loss
             if loss_function == 'chimera++':
                 loss = 0.975 * loss_dc_whitend(embd, Y) \
-                    + 0.025 * (
-                        loss_mi_tpsa(mask, X, S, gamma=2.)
-                        + loss_ce_phase(
-                            phasep, S_phase, model.phase_head.codebook
-                        )
-                        + loss_csa(com, X, S)
-                    )
+                    + 0.025 * loss_mi_tpsa(mask, X, S, gamma=2.)
             elif loss_function == 'mask':
-                loss = loss_mi_tpsa(mask, X, S, gamma=2.) \
-                + loss_ce_phase(
-                    phasep, S_phase, model.phase_head.codebook
-                ) \
-                + loss_csa(com, X, S)
-            elif loss_function == 'wave': # FIXME
-                com_mag = torch.sqrt(torch.sum(com**2, dim=-1).clamp(min=1e-24))
-                com_phase = com / com_mag.unsqueeze(-1)
-                amphat = com_mag * X_abs.unsqueeze(1)
-                #phasehat = X_phase.unsqueeze(1)
-                phasehat = com / com_mag.unsqueeze(-1)
-                l = MisiLayer(n_fft, hop_length, win_length, layer_num=5)
-                phasehat, shat = l(amphat, phasehat, x)
+                loss = 0.5 * loss_mi_tpsa(mask, X, S, gamma=2.) \
+                    + 0.5 * loss_csa(com, X, S)
+            elif loss_function == 'wave':
+                Shat = comp_mul(com, X.unsqueeze(1))
+                _, shat = misiLayer(Shat, x)
                 loss = loss_wa(shat, s)
 
             sum_loss += loss.item()
