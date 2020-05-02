@@ -129,7 +129,7 @@ class ChimeraMagPhasebook(torch.nn.Module):
     # valid output modes are: 'mag', 'magp', 'phase', 'phasep', 'com'
     # ['mag', 'phasep', 'com'] for L_{CHI++}(=L_{DC}+L_{MI}), L_{MI}
     # ['com'] for L_{WA}, and waveform inference at test
-    def forward(self, x, outputs):
+    def forward(self, x, outputs=['mag', 'phasep', 'com']):
         cossin = lambda x: torch.stack((torch.cos(x), torch.sin(x)), dim=-1)
         out_base = self.base(x)
         out_embed = self.embed_head(out_base)
