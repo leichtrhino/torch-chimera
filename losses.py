@@ -115,20 +115,17 @@ def loss_csa(com_pred, mixture, sources, L=1):
     )
     abs_comp = lambda X: torch.sqrt(torch.sum(X**2, -1).clamp(min=1e-12))
     phase_comp = lambda X: torch.atan2(*X.split(1, dim=-1)[::-1]).squeeze(-1)
+    source_pred = comp_mul(com_pred, mixture.unsqueeze(1))
 
     if L == 1:
         return sum(min(
-            torch.sum(abs_comp(
-                comp_mul(torch.stack(c), _mixture.unsqueeze(0)) - _sources
-            ))
-            for c in permutations(_com)
-        ) for _com, _mixture, _sources in zip(com_pred, mixture, sources))
+            torch.sum(abs_comp(torch.stack(s) - _sources))
+            for s in permutations(_source_pred)
+        ) for _source_pred, _sources in zip(source_pred, sources))
     elif L == 2:
         return sum(min(
-            torch.sum(abs_comp(
-                comp_mul(torch.stack(c), _mixture.unsqueeze(0)) - _sources
-            ) ** L)
-            for c in permutations(_com)
-        ) for _com, _mixture, _sources in zip(com_pred, mixture, sources))
+            torch.sum(abs_comp(torch.stack(s) - _sources) ** L)
+            for s in permutations(_source_pred)
+        ) for _source_pred, _sources in zip(source_pred, sources))
     else:
         raise NotImplementedError()
