@@ -53,13 +53,14 @@ def main():
     initial_epoch = 25 # start at 0
     train_epoch = 5
     loss_function = 'mask' # 'chimera++', 'mask', 'wave'
+    n_misi_layers = 1
     model = ChimeraMagPhasebook(freq_bins, spec_time, 2, 20, N=600)
     if initial_model is not None:
         model.load_state_dict(torch.load(initial_model))
     if initial_epoch > 0:
         model.load_state_dict(torch.load(f'model_epoch{initial_epoch-1}.pth'))
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    misiLayer = MisiLayer(n_fft, hop_length, win_length, layer_num=5)
+    misiLayer = MisiLayer(n_fft, hop_length, win_length, layer_num=n_misi_layers)
 
     for epoch in range(initial_epoch, initial_epoch+train_epoch):
         sum_loss = 0
@@ -92,7 +93,7 @@ def main():
                     + 0.5 * loss_csa(com, X, S)
             elif loss_function == 'wave':
                 Shat = comp_mul(com, X.unsqueeze(1))
-                _, shat = misiLayer(Shat, x)
+                shat = misiLayer(Shat, x)
                 loss = loss_wa(shat, s)
 
             sum_loss += loss.item()

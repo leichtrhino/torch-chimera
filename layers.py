@@ -25,13 +25,12 @@ class MisiLayer(torch.nn.Module):
         ).reshape(*X.shape[:-3], waveform_length)
 
         mag = torch.sqrt(torch.sum(Shat**2, dim=-1).clamp(min=1e-24))
-        phasehat = Shat / mag.unsqueeze(-1)
         shat = istft(Shat)
         for _ in range(self.layer_num):
             delta = mixture - torch.sum(shat, dim=1)
             shat_tmp = shat + delta.unsqueeze(1) / n_channels
-            Shat = stft(shat_tmp)
-            _mag = torch.sqrt(torch.sum(Shat**2, dim=-1).clamp(min=1e-24))
-            phasehat = Shat / _mag.unsqueeze(-1)
-            shat = istft(mag.unsqueeze(-1) * phasehat)
-        return phasehat, shat
+            Shat_tmp = stft(shat_tmp)
+            _mag = torch.sqrt(torch.sum(Shat_tmp**2, dim=-1).clamp(min=1e-24))
+            phase = Shat_tmp / _mag.unsqueeze(-1)
+            shat = istft(mag.unsqueeze(-1) * phase)
+        return shat

@@ -56,7 +56,7 @@ def main():
 
     model = ChimeraMagPhasebook(freq_bins, spec_time, 2, 20, N=600)
     model.load_state_dict(torch.load(model_file))
-    misilayer = MisiLayer(n_fft, hop_length, win_length, 5)
+    misi_layer = MisiLayer(n_fft, hop_length, win_length, 5)
 
     #batch = transform(next(iter(dataloader)))
     batch = transform(dataset[list(range(
@@ -73,14 +73,14 @@ def main():
     _, (com,) = model(torch.log10(X_abs.clamp(min=1e-9)), outputs=['com'])
     com = com.detach()
     Shat = comp_mul(com, X.unsqueeze(1))
-    _, shat = misiLayer(Shat, x)
-    shat = shat.transpose(0, 1).reshape(2, batch_size * seconds * target_freq)
-
+    shat = misi_layer(Shat, x)
     s = torchaudio.functional.istft(
         S.reshape(batch_size*2, freq_bins, spec_time, 2),
         n_fft, hop_length, win_length
-    ).reshape(batch_size, 2, seconds * target_freq).transpose(0, 1) \
-    .reshape(2, batch_size * seconds * target_freq)
+    ).reshape(batch_size, 2, seconds * target_freq)
+
+    shat = shat.transpose(0, 1).reshape(2, batch_size * seconds * target_freq)
+    s = s.transpose(0, 1).reshape(2, batch_size * seconds * target_freq)
 
     for i_channel, (_s, _shat) in enumerate(zip(s, shat)):
         torchaudio.save(f's_{i_channel}.wav', _s, target_freq)
