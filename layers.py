@@ -19,10 +19,12 @@ class MisiLayer(torch.nn.Module):
         waveform_length = mixture.shape[-1]
 
         stft = lambda x: torch.stft(
-            x, self.n_fft, self.hop_length, self.win_length
+            x, self.n_fft, self.hop_length, self.win_length,
+            window=torch.hann_window(self.n_fft)
         )
         istft = lambda X: torchaudio.functional.istft(
-            X, self.n_fft, self.hop_length, self.win_length
+            X, self.n_fft, self.hop_length, self.win_length,
+            window=torch.hann_window(self.n_fft)
         )
 
         shat = istft(Shat)
@@ -50,17 +52,21 @@ class MisiNetwork(torch.nn.Module):
         batch_size, n_channels, freq_bins, spec_time, _ = mask.shape
         mask = mask.reshape(batch_size * n_channels, freq_bins, spec_time, _)
         waveform_length = mixture.shape[-1]
-        comp_mul = lambda X, Y: torch.stack(
-            (X.unbind(-1)[0] * Y.unbind(-1)[0] - X.unbind(-1)[1] * Y.unbind(-1)[1],
-             X.unbind(-1)[0] * Y.unbind(-1)[1] + X.unbind(-1)[1] * Y.unbind(-1)[0]),
-            dim=-1
-        )
+        def comp_mul(X, Y):
+            xre, xim = X.unbind(-1)
+            yre, yim = Y.unbind(-1)
+            return torch.stack(
+                (xre*yre - xim*yim, xre*yim + xim*yre), dim=-1
+            )
+
         stft = lambda x: torch.stft(
             x.reshape(x.shape[:-1].numel(), waveform_length),
-            self.n_fft, self.hop_length, self.win_length
+            self.n_fft, self.hop_length, self.win_length,
+            window=torch.hann_window(self.n_fft)
         )
         istft = lambda X: torchaudio.functional.istft(
-            X, self.n_fft, self.hop_length, self.win_length
+            X, self.n_fft, self.hop_length, self.win_length,
+            window=torch.hann_window(self.n_fft)
         ).reshape(*X.shape[:-3], waveform_length)
 
         Shat = comp_mul(mask, stft(mixture).repeat_interleave(n_channels, 0))
