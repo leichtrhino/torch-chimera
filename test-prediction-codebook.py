@@ -1,16 +1,14 @@
 #!/usr/bin/env python
-
 import sys
-import math
 import torch
 import torchaudio
 from datasets import DSD100, MixTransform
-from layers import MisiLayer
+from layers import MisiNetwork
 from models import ChimeraMagPhasebook
 
 def main():
-    model_file = 'model_misi.pth'
-    batch_size = 24
+    model_file = 'model_epoch9.pth'
+    batch_size = 4
     batch_idx = 2
     orig_freq = 44100
     target_freq = 16000
@@ -26,11 +24,13 @@ def main():
 
     stft = lambda x: torch.stft(
         x.reshape(x.shape[:-1].numel(), seconds * target_freq),
-        n_fft, hop_length, win_length
+        n_fft, hop_length, win_length,
+        window=torch.hann_window(n_fft)
     ).reshape(*x.shape[:-1], freq_bins, spec_time, 2)
     istft = lambda X: torchaudio.functional.istft(
         X.reshape(X.shape[:-3].numel(), freq_bins, spec_time, 2),
-        self.n_fft, self.hop_length, self.win_length
+        n_fft, hop_length, win_length,
+        window=torch.hann_window(n_fft)
     ).reshape(*X.shape[:-3], waveform_length)
     comp_mul = lambda X, Y: torch.stack(
         (X.unbind(-1)[0] * Y.unbind(-1)[0] - X.unbind(-1)[1] * Y.unbind(-1)[1],
@@ -46,7 +46,7 @@ def main():
         MixTransform([(0, 1, 2), 3, (0, 1, 2, 3)]),
         lambda x: x.reshape(x.shape[0] * 3, seconds * orig_freq),
         torchaudio.transforms.Resample(orig_freq, target_freq),
-        lambda x: torch.stft(x, n_fft, hop_length, win_length),
+        lambda x: torch.stft(x, n_fft, hop_length, win_length, window=torch.hann_window(n_fft)),
         lambda x: x.reshape(x.shape[0] // 3, 3, freq_bins, spec_time, 2),
     ]
     def transform(x):
@@ -56,7 +56,7 @@ def main():
 
     model = ChimeraMagPhasebook(freq_bins, spec_time, 2, 20, N=600)
     model.load_state_dict(torch.load(model_file))
-    misi_layer = MisiLayer(n_fft, hop_length, win_length, 5)
+    misi_layer = MisiNetwork(n_fft, hop_length, win_length, 1)
 
     #batch = transform(next(iter(dataloader)))
     batch = transform(dataset[list(range(
@@ -67,7 +67,8 @@ def main():
     X_abs = torch.sqrt(torch.sum(X**2, dim=-1))
     X_phase = X / X_abs.clamp(min=1e-9).unsqueeze(-1)
     x = torchaudio.functional.istft(
-        X, n_fft, hop_length, win_length
+        X, n_fft, hop_length, win_length,
+        window=torch.hann_window(n_fft)
     )
 
     _, (com,) = model(torch.log10(X_abs.clamp(min=1e-9)), outputs=['com'])
@@ -76,9 +77,9 @@ def main():
     shat = misi_layer(Shat, x)
     s = torchaudio.functional.istft(
         S.reshape(batch_size*2, freq_bins, spec_time, 2),
-        n_fft, hop_length, win_length
+        n_fft, hop_length, win_length,
+        window=torch.hann_window(n_fft)
     ).reshape(batch_size, 2, seconds * target_freq)
-
     shat = shat.transpose(0, 1).reshape(2, batch_size * seconds * target_freq)
     s = s.transpose(0, 1).reshape(2, batch_size * seconds * target_freq)
 
