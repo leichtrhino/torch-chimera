@@ -80,6 +80,10 @@ def main():
         n_fft, hop_length, win_length,
         window=torch.hann_window(n_fft)
     ).reshape(batch_size, 2, seconds * target_freq)
+
+    print(eval_snr(shat, s))
+    print(eval_si_sdr(shat, s))
+
     shat = shat.transpose(0, 1).reshape(2, batch_size * seconds * target_freq)
     s = s.transpose(0, 1).reshape(2, batch_size * seconds * target_freq)
 
