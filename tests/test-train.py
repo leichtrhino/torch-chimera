@@ -9,10 +9,10 @@ from models import ChimeraClassic
 from models import ChimeraPlusPlus
 from models import ChimeraMagPhasebook
 from losses import loss_mi_tpsa, loss_dc_whitend, loss_wa, loss_ce_phase, loss_csa
-from layers import MisiLayer
+from layers import MisiNetwork
 
 def main():
-    batch_size = 32
+    batch_size = 16
     orig_freq = 44100
     target_freq = 16000
     seconds = 5
@@ -21,7 +21,8 @@ def main():
     win_length = 512
     hop_length = 128
     freq_bins, spec_time, _ = torch.stft(
-        torch.Tensor(seconds * target_freq), n_fft, hop_length, win_length
+        torch.Tensor(seconds * target_freq), n_fft, hop_length, win_length,
+        window=torch.hann_window(n_fft)
     ).shape
 
     dataset = DSD100(
@@ -41,7 +42,7 @@ def main():
 
     stft = lambda x: torch.stft(
             x.reshape(x.shape[:-1].numel(), seconds * target_freq),
-            n_fft, hop_length, win_length
+            n_fft, hop_length, win_length, window=torch.hann_window(n_fft)
         ).reshape(*x.shape[:-1], freq_bins, spec_time, 2)
     comp_mul = lambda X, Y: torch.stack(
         (X.unbind(-1)[0] * Y.unbind(-1)[0] - X.unbind(-1)[1] * Y.unbind(-1)[1],
@@ -50,9 +51,9 @@ def main():
     )
 
     initial_model = None #'model-dc.pth'
-    initial_epoch = 25 # start at 0
-    train_epoch = 5
-    loss_function = 'mask' # 'chimera++', 'mask', 'wave'
+    initial_epoch = 20 # start at 0
+    train_epoch = 10
+    loss_function = 'wave' # 'chimera++', 'mask', 'wave'
     n_misi_layers = 1
     model = ChimeraMagPhasebook(freq_bins, spec_time, 2, 20, N=600)
     if initial_model is not None:
@@ -60,7 +61,7 @@ def main():
     if initial_epoch > 0:
         model.load_state_dict(torch.load(f'model_epoch{initial_epoch-1}.pth'))
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    misiLayer = MisiLayer(n_fft, hop_length, win_length, layer_num=n_misi_layers)
+    misiLayer = MisiNetwork(n_fft, hop_length, win_length, layer_num=n_misi_layers)
 
     for epoch in range(initial_epoch, initial_epoch+train_epoch):
         sum_loss = 0
