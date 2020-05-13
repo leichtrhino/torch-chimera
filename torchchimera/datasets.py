@@ -13,7 +13,9 @@ class DSD100(torch.utils.data.Dataset):
         self.sources = sources
         self.waveform_length = waveform_length
         self.offsets = [0]
+        self.rates = []
         self.parent_dir = os.path.join(root_dir, 'Sources', split)
+        self.transform = transform
         self.source_dirs = sorted(filter(
             lambda d: os.path.isdir(d),
             map(
@@ -26,6 +28,7 @@ class DSD100(torch.utils.data.Dataset):
             self.offsets.append(
                 self.offsets[-1] + math.ceil(si.length / si.channels / self.waveform_length)
             )
+            self.rates.append(si.rate)
 
     def __len__(self):
         return self.offsets[-1]
@@ -49,14 +52,21 @@ class DSD100(torch.utils.data.Dataset):
                     self.waveform_length-x.shape[-1]
                 )
             ), dim=-1)
-        return x
+        return x, self.rates[audio_idx]
 
     def __getitem__(self, idx):
         if type(idx) == int:
-            return self._get_single_item(idx)
+            waveform, rate = self._get_single_item(idx)
+            if callable(self.transform):
+                waveform = self.transform(waveform)
+            return waveform, rate
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        return torch.stack(list(map(self._get_single_item, idx)))
+        waveforms, rates = zip(*[self._get_single_item(i) for i in idx])
+        waveforms = torch.stack(waveforms)
+        if callable(self.transform):
+            waveforms = self.transform(waveforms)
+        return waveforms, rates
 
 class MixTransform(object):
     def __init__(self, source_lists=[(0, 1, 2), 3], source_coeffs=None):
