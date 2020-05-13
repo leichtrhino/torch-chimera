@@ -1,5 +1,16 @@
 
+import random
 import torch
+import torchaudio
+
+class Compose(object):
+    def __init__(self, transforms):
+        self.transforms = transforms
+
+    def __call__(self, x):
+        for t in self.transforms:
+            x = t(x)
+        return x
 
 class MixTransform(torch.nn.Module):
     def __init__(self, source_lists=[(0, 1, 2), 3], source_coeffs=None):
@@ -26,3 +37,47 @@ class MixTransform(torch.nn.Module):
             for sl, sc in zip(self.source_lists, self.source_coeffs)
         ], dim=-2)
 
+class PitchShift(torch.nn.Module):
+    def __init__(self, sampling_rate, shift_rate, n_fft=512):
+        super(PitchShift, self).__init__()
+        self.stft = lambda x: torch.stft(
+            x, n_fft, hop_length=n_fft//4,
+            window=torch.hann_window(n_fft)
+        )
+        self.istft = lambda x: torchaudio.functional.istft(
+            x, n_fft, hop_length=n_fft//4,
+            window=torch.hann_window(n_fft)
+        )
+        self.time_stretch = torchaudio.transforms.TimeStretch(
+            hop_length=n_fft//4,
+            n_freq=(n_fft//2)+1,
+            fixed_rate=shift_rate
+        )
+        self.resample = torchaudio.transforms.Resample(
+            orig_freq=sampling_rate/shift_rate,
+            new_freq=sampling_rate
+        )
+
+    def forward(self, x):
+        spec_orig = self.stft(x)
+        spec_target = self.time_stretch(spec_orig)
+        x_target = self.istft(spec_target)
+        return self.resample(x_target)
+
+class RandomCrop(torch.nn.Module):
+    def __init__(self, waveform_length):
+        super(RandomCrop, self).__init__()
+        self.waveform_length = waveform_length
+
+    def forward(self, x):
+        if x.shape[-1] < self.waveform_length:
+            offset = random.randint(0, self.waveform_length-x.shape[-1])
+            x = torch.cat((
+                torch.zeros(x.shape[0], offset),
+                x,
+                torch.zeros(x.shape[0], self.waveform_length-offset-x.shape[-1])
+            ), dim=-1)
+        elif x.shape[-1] > self.waveform_length:
+            offset = random.randint(0, x.shape[-1]-self.waveform_length)
+            x = x[:, offset:offset+self.waveform_length]
+        return x
