@@ -67,27 +67,3 @@ class DSD100(torch.utils.data.Dataset):
         if callable(self.transform):
             waveforms = self.transform(waveforms)
         return waveforms, rates
-
-class MixTransform(object):
-    def __init__(self, source_lists=[(0, 1, 2), 3], source_coeffs=None):
-        self.source_lists = [
-            torch.Tensor(s if hasattr(s, '__len__') else [s]).long()
-            for s in source_lists
-        ]
-        if source_coeffs is None:
-            self.source_coeffs = [
-                torch.ones(len(s)) if hasattr(s, '__len__') else
-                torch.ones(1) for s in source_lists
-            ]
-        else:
-            self.source_coeffs = source_coeffs
-
-    def __call__(self, sample):
-        # weighted sum along dim=-2 (dim=-1 are waveforms)
-        return torch.stack([
-            torch.sum(
-                sc.unsqueeze(-1) * sample.index_select(dim=-2, index=sl),
-                dim=-2
-            )
-            for sl, sc in zip(self.source_lists, self.source_coeffs)
-        ], dim=-2)
