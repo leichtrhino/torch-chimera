@@ -2,6 +2,7 @@
 import random
 import torch
 import torchaudio
+import resampy
 
 class Compose(object):
     def __init__(self, transforms):
@@ -11,6 +12,16 @@ class Compose(object):
         for t in self.transforms:
             x = t(x)
         return x
+
+class Resample(torch.nn.Module):
+    def __init__(self, orig_freq, new_freq):
+        super(Resample, self).__init__()
+        self.orig_freq = orig_freq
+        self.new_freq = new_freq
+
+    def forward(self, x):
+        return torch.Tensor(resampy.resample(
+            x.numpy(), self.orig_freq, self.new_freq, axis=-1))
 
 class MixTransform(torch.nn.Module):
     def __init__(self, source_lists=[(0, 1, 2), 3], source_coeffs=None):
