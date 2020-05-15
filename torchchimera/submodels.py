@@ -43,6 +43,8 @@ class MisiNetwork(torch.nn.Module):
         self.hop_length = hop_length
         self.win_length = win_length
         self.layer_num = layer_num
+    def add_layer(self):
+        self.layer_num += 1
     # input: (batch_size, n_channels, freq_bins, spec_time, 2)
     # input: (batch_size, waveform_length)
     # output: (batch_size, n_channels, waveform_length)
@@ -166,6 +168,8 @@ class TrainableMisiNetwork(torch.nn.Module):
         self.misi_layers = torch.nn.ModuleList([
             TrainableMisiLayer(n_fft) for _ in range(layer_num)
         ])
+    def add_layer(self):
+        self.misi_layers.append(TrainableMisiLayer(self.n_fft))
     # input: (batch_size, n_channels, freq_bins, spec_time, 2)
     # input: (batch_size, waveform_length)
     # output: (batch_size, n_channels, waveform_length)
