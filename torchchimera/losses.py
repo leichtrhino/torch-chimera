@@ -6,20 +6,19 @@ from itertools import permutations
 # embd: (batch_size, time*freq_bin, embd_dim)
 # label: (batch_size, time*freq_bin, n_channels)
 def loss_dc(embd, label):
-    return torch.sum(torch.matmul(embd.transpose(1, 2), embd) ** 2) \
-        + torch.sum(torch.matmul(label.transpose(1, 2), label) ** 2) \
-        - 2 * torch.sum(torch.matmul(embd.transpose(1, 2), label) ** 2)
+    return torch.sum(embd.transpose(1, 2).bmm(embd) ** 2) \
+        + torch.sum(label.transpose(1, 2).bmm(label) ** 2) \
+        - 2 * torch.sum(embd.transpose(1, 2).bmm(label) ** 2)
 
 def loss_dc_whitend(embd, label):
     C = label.shape[2]
     D = embd.shape[2]
-    VtV = torch.matmul(embd.transpose(1, 2), embd) + 1e-9 * torch.eye(D)
-    VtY = torch.matmul(embd.transpose(1, 2), label)
-    YtY = torch.matmul(label.transpose(1, 2), label) + 1e-9 * torch.eye(C)
+    VtV = embd.transpose(1, 2).bmm(embd) + 1e-24 * torch.eye(D)
+    VtY = embd.transpose(1, 2).bmm(label)
+    YtY = label.transpose(1, 2).bmm(label) + 1e-24 * torch.eye(C)
     return embd.shape[0] * D - torch.trace(torch.sum(
-        torch.matmul(torch.matmul(torch.matmul(
-            VtV.inverse(), VtY), YtY.inverse()), VtY.transpose(1, 2)),
-        0
+        VtV.inverse().bmm(VtY).bmm(YtY.inverse()).bmm(VtY.transpose(1, 2)),
+        dim=0
     ))
 
 # loss functions for mask inference head
