@@ -5,11 +5,12 @@ from math import pi
 # input: (batch_size, freq_bins, time)
 # output: (batch_size, time, 2*n_hidden_states)
 class ChimeraBase(torch.nn.Module):
-    def __init__(self, n_freq_bins, n_hidden_states):
+    def __init__(self, n_freq_bins, n_hidden_states, dropout=0.3):
         super(ChimeraBase, self).__init__()
         self.blstm_layer = torch.nn.LSTM(
             n_freq_bins, n_hidden_states, 4,
-            batch_first=True, bidirectional=True
+            batch_first=True, bidirectional=True,
+            dropout=dropout
         )
     def forward(self, x):
         out_blstm, _ = self.blstm_layer(x.transpose(1, 2)) # (B, T, 2*N)
