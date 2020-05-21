@@ -26,7 +26,7 @@ class EmbeddingHead(torch.nn.Module):
         self.embed_layer = torch.nn.Linear(input_dim, freq_bins*embed_dim)
     def forward(self, x):
         batch_size = x.shape[0]
-        out_embed = torch.tanh(self.embed_layer(x)) # (B, T, F*D)
+        out_embed = torch.sigmoid(self.embed_layer(x)) # (B, T, F*D)
         out_embed = out_embed.reshape(
             batch_size, self.time*self.freq_bins, self.embed_dim # (B,T*F,D)
         )
