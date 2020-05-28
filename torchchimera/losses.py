@@ -5,12 +5,21 @@ from itertools import permutations
 # loss functions for deep clustering head
 # embd: (batch_size, time*freq_bin, embd_dim)
 # label: (batch_size, time*freq_bin, n_channels)
-def loss_dc(embd, label):
+# weight: (batch_size, time*freq_bin)
+def loss_dc(embd, label, weight=None):
+    if type(weight) == torch.Tensor:
+        weight = torch.sqrt(weight).unsqueeze(-1)
+        embd = embd * weight
+        label = label * weight
     return torch.sum(embd.transpose(1, 2).bmm(embd) ** 2) \
         + torch.sum(label.transpose(1, 2).bmm(label) ** 2) \
         - 2 * torch.sum(embd.transpose(1, 2).bmm(label) ** 2)
 
-def loss_dc_whitend(embd, label):
+def loss_dc_whitend(embd, label, weight=None):
+    if type(weight) == torch.Tensor:
+        weight = torch.sqrt(weight).unsqueeze(-1)
+        embd = embd * weight
+        label = label * weight
     C = label.shape[2]
     D = embd.shape[2]
     VtV = embd.transpose(1, 2).bmm(embd) + 1e-24 * torch.eye(D)
