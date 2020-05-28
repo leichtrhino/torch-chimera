@@ -1,4 +1,5 @@
 
+import math
 import random
 import torch
 import torchaudio
@@ -83,11 +84,15 @@ class RandomCrop(torch.nn.Module):
     def forward(self, x):
         if x.shape[-1] < self.waveform_length:
             offset = random.randint(0, self.waveform_length-x.shape[-1])
-            x = torch.cat((
-                torch.zeros(x.shape[0], offset),
-                x,
-                torch.zeros(x.shape[0], self.waveform_length-offset-x.shape[-1])
-            ), dim=-1)
+            # pad reflect
+            pad_begin = x.repeat((1, math.ceil(offset / x.shape[-1])))[
+                :, math.ceil(offset / x.shape[-1]) * x.shape[-1] - offset:
+            ]
+            offset_end = self.waveform_length-offset-x.shape[-1]
+            pad_end = x.repeat((1, math.ceil(offset_end / x.shape[-1])))[
+                :, :offset_end
+            ]
+            x = torch.cat((pad_begin, x, pad_end), dim=-1)
         elif x.shape[-1] > self.waveform_length:
             offset = random.randint(0, x.shape[-1]-self.waveform_length)
             x = x[:, offset:offset+self.waveform_length]
