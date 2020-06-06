@@ -23,28 +23,38 @@ class DSD100(torch.utils.data.Dataset):
                 os.listdir(self.parent_dir)
             )
         ))
+        self.max_length = 0 if waveform_length is None else waveform_length
         for d in self.source_dirs:
             si, _ = torchaudio.info(os.path.join(d, 'bass.wav'))
-            self.offsets.append(
-                self.offsets[-1] + math.ceil(si.length / si.channels / self.waveform_length)
-            )
+            if waveform_length is None:
+                self.max_length = max(self.max_length, si.length // si.channels)
+            offset_diff = 1 if self.waveform_length is None else\
+                math.ceil(si.length / si.channels / self.waveform_length)
+            self.offsets.append(self.offsets[-1] + offset_diff)
             self.rates.append(si.rate)
 
     def __len__(self):
         return self.offsets[-1]
 
+    def get_max_length(self):
+        return self.max_length
+
     def _get_single_item(self, idx):
         audio_idx = bisect.bisect(self.offsets, idx) - 1
         offset_idx = idx - self.offsets[audio_idx]
+        offset = 0 if self.waveform_length is None else\
+            offset_idx * self.waveform_length
+        num_frames = 0 if self.waveform_length is None else\
+            self.waveform_length
         x = torch.stack([
             torchaudio.load(
                 os.path.join(self.source_dirs[audio_idx], s+'.wav'),
-                offset=offset_idx * self.waveform_length,
-                num_frames=self.waveform_length
+                offset=offset, num_frames=num_frames
             )[0]
             for s in self.sources
         ]).mean(axis=1)
-        if x.shape[-1] < self.waveform_length:
+        if self.waveform_length is not None and\
+           x.shape[-1] < self.waveform_length:
             x = torch.cat((
                 x,
                 torch.zeros(
