@@ -22,30 +22,30 @@ class ChimeraBase(torch.nn.Module):
         return self.blstm_layer(x.transpose(1, 2), initial_states) # (B, T, 2*N)
 
 class EmbeddingHead(torch.nn.Module):
-    def __init__(self, input_dim, freq_bins, time, embed_dim):
+    def __init__(self, input_dim, freq_bins, embed_dim):
         super(EmbeddingHead, self).__init__()
         self.input_dim = input_dim
         self.freq_bins = freq_bins
-        self.time = time
         self.embed_dim = embed_dim
         self.embed_layer = torch.nn.Linear(input_dim, freq_bins*embed_dim)
     def forward(self, x):
         batch_size = x.shape[0]
         out_embed = torch.sigmoid(self.embed_layer(x)) # (B, T, F*D)
         out_embed = out_embed.reshape(
-            batch_size, self.time*self.freq_bins, self.embed_dim # (B,T*F,D)
+            batch_size,
+            out_embed.shape.numel() // (batch_size * self.embed_dim),
+            self.embed_dim # (B,T*F,D)
         )
         out_embed = out_embed /\
             out_embed.norm(p=2, dim=-1, keepdim=True).clamp(min=1e-12)
         return out_embed
 
 class BaseMaskHead(torch.nn.Module):
-    def __init__(self, input_dim, freq_bins, time, n_channels,
+    def __init__(self, input_dim, freq_bins, n_channels,
                  output_dim=1, activation=lambda x: x):
         super(BaseMaskHead, self).__init__()
         self.input_dim = input_dim
         self.freq_bins = freq_bins
-        self.time = time
         self.n_channels = n_channels
         self.output_dim = output_dim
         self.activation = activation
@@ -56,7 +56,11 @@ class BaseMaskHead(torch.nn.Module):
         batch_size = x.shape[0]
         out_mask = self.mask_layer(x) # (B, T, F*C*O)
         out_mask = out_mask.reshape( # (B, T, F, C, O)
-            batch_size, self.time,
+            batch_size,
+            out_mask.shape.numel() // (
+                batch_size *
+                self.freq_bins * self.n_channels * self.output_dim
+            ),
             self.freq_bins, self.n_channels, self.output_dim
         )
         out_mask = out_mask.permute(0, 3, 2, 1, 4) # (B, C, F, T, O)
@@ -91,9 +95,9 @@ class ChimeraClassic(torch.nn.Module):
         self.n_channels = C
         self.embed_dims = D
         self.base = ChimeraBase(F, N)
-        self.embed_head = EmbeddingHead(2*N, F, T, D)
+        self.embed_head = EmbeddingHead(2*N, F, D)
         self.mask_head = BaseMaskHead(
-            F*D, F, T, C, 1, torch.nn.Softmax(dim=2)
+            F*D, F, C, 1, torch.nn.Softmax(dim=2)
         )
     def forward(self, x, states=None):
         batch_size = x.shape[0]
@@ -105,12 +109,12 @@ class ChimeraClassic(torch.nn.Module):
         return out_embd, out_mask, out_states
 
 class ChimeraPlusPlus(torch.nn.Module):
-    def __init__(self, F, T, C, D, N=400):
+    def __init__(self, F, C, D, N=400):
         super(ChimeraPlusPlus, self).__init__()
         self.base = ChimeraBase(F, N)
-        self.embed_head = EmbeddingHead(2*N, F, T, D)
+        self.embed_head = EmbeddingHead(2*N, F, D)
         self.mask_head_base = BaseMaskHead(
-            2*N, F, T, C, 3, torch.nn.Softmax(dim=-1)
+            2*N, F, C, 3, torch.nn.Softmax(dim=-1)
         )
         self.mask_head = CodebookMaskHead(1.0*torch.arange(3))
     def forward(self, x, states=None):
@@ -120,16 +124,16 @@ class ChimeraPlusPlus(torch.nn.Module):
             out_states
 
 class ChimeraMagPhasebook(torch.nn.Module):
-    def __init__(self, F, T, C, D, N=400):
+    def __init__(self, F, C, D, N=400):
         super(ChimeraMagPhasebook, self).__init__()
         self.base = ChimeraBase(F, N)
-        self.embed_head = EmbeddingHead(2*N, F, T, D)
+        self.embed_head = EmbeddingHead(2*N, F, D)
         self.mag_base = BaseMaskHead(
-            2*N, F, T, C, 3, torch.nn.Softmax(dim=-1)
+            2*N, F, C, 3, torch.nn.Softmax(dim=-1)
         )
         self.mag_head = CodebookMaskHead(1.0*torch.arange(3))
         self.phase_base = BaseMaskHead(
-            2*N, F, T, C, 8, torch.nn.Softmax(dim=-1)
+            2*N, F, C, 8, torch.nn.Softmax(dim=-1)
         )
         self.phase_head = CodebookMaskHead(2*pi*torch.arange(-3, 5)/8)
     # valid output modes are: 'mag', 'magp', 'phase', 'phasep', 'com'
@@ -155,11 +159,11 @@ class ChimeraMagPhasebook(torch.nn.Module):
         return out_embed, out_masks, out_states
 
 class ChimeraCombook(torch.nn.Module):
-    def __init__(self, F, T, C, D, N=400):
+    def __init__(self, F, C, D, N=400):
         super(RefactoredChimeraCombook, self).__init__()
         self.base = ChimeraBase(F, N)
-        self.embed_head = EmbeddingHead(2*N, F, T, D)
-        self.mask_head = CombookMaskHead(2*N, F, T, C)
+        self.embed_head = EmbeddingHead(2*N, F, D)
+        self.mask_head = CombookMaskHead(2*N, F, C)
     def forward(self, x, states=None):
         out_base, out_states = self.base(x, states)
         return self.embed_head(out_base), self.mask_head(out_mask), out_states
