@@ -16,8 +16,6 @@ from torchchimera.transforms import MixTransform
 from torchchimera.transforms import PitchShift
 from torchchimera.transforms import RandomCrop
 from torchchimera.models import ChimeraMagPhasebook
-from torchchimera.submodels import MisiNetwork
-from torchchimera.submodels import TrainableMisiNetwork
 from torchchimera.losses import loss_mi_tpsa
 from torchchimera.losses import loss_dc_whitend
 from torchchimera.losses import loss_wa
@@ -42,35 +40,36 @@ def weight_matrix(X):
 
 def main():
     # parse arguments and set parameters
-    batch_size = 8
-    validation_batch_size = 8
+    batch_size = 64
+    validation_batch_size = 128
     orig_freq = 44100
     target_freq = 16000
-    seconds = 3
+    seconds = 3.33
     dataset_path = '/Volumes/Buffalo 2TB/Datasets/DSD100'
 
     n_fft = 512
     win_length = 512
     hop_length = 128
     freq_bins, spec_time, _ = torch.stft(
-        torch.Tensor(seconds * target_freq), n_fft, hop_length, win_length,
+        torch.Tensor(int(seconds * target_freq)), n_fft, hop_length, win_length,
         window=torch.hann_window(n_fft)
     ).shape
 
     # create datasets and dataloaders for train and validation split
-    dataset_train = DSD100(dataset_path, 'Dev', None)
+    dataset_train = DSD100(dataset_path, 'Dev', int(orig_freq * seconds * 3))
     dataset_train.transform = RandomTransform(
         int(dataset_train.get_max_length() / orig_freq * target_freq))
+    #dataset_train = torch.utils.data.Subset(dataset_train, range(8))
     dataloader_train = torch.utils.data.DataLoader(
-        dataset_train, batch_size=batch_size, num_workers=2, shuffle=True)
+        dataset_train, batch_size=batch_size, num_workers=8, shuffle=True)
 
-    dataset_validation = DSD100(dataset_path, 'Test', None)
+    dataset_validation = DSD100(dataset_path, 'Test', int(orig_freq * seconds * 3))
     dataset_validation.transform = SimpleTransform(
         int(dataset_validation.get_max_length() / orig_freq * target_freq))
-    dataset_validation = torch.utils.data.Subset(dataset_validation, range(8))
+    #dataset_validation = torch.utils.data.Subset(dataset_validation, range(128))
     dataloader_validation = torch.utils.data.DataLoader(
         dataset_validation, batch_size=validation_batch_size,
-        num_workers=2, shuffle=False)
+        num_workers=8, shuffle=False)
 
     def generate_batch(dataloader, waveform_length):
         for (B, _) in dataloader:
@@ -87,51 +86,41 @@ def main():
                     ), dim=-1), batch_end
 
     # create networks and load from file if needed
-    initial_epoch = 9 # start at 1
-    train_epoch = 1
+    initial_epoch = 1 # start at 1
+    train_epoch = 10
     loss_function = 'chimera++' # 'chimera++', 'mask', 'wave'
-    input_model = f'model-dc-epoch-{initial_epoch-1}.pth'\
+    input_checkpoint = f'checkpoint-dc-epoch-{initial_epoch-1}.tar'\
         if initial_epoch > 1 else None
-    output_model = f'model-dc-epoch-{initial_epoch+train_epoch-1}.pth'
-    input_misi = None
-    output_misi = None
-    is_misi_trainable = False
-    n_misi_layers = 0
-    n_input_misi_layers = 0 # default = n_misi_layers
+    output_checkpoint = f'checkpoint-dc-epoch-{initial_epoch+train_epoch-1}.tar'
 
-    model = ChimeraMagPhasebook(freq_bins, spec_time, 2, 20, N=600)
-    if input_model is not None:
-        model.load_state_dict(torch.load(input_model))
-    if is_misi_trainable:
-        misi = TrainableMisiNetwork(n_fft, n_input_misi_layers)
-    else:
-        misi = MisiNetwork(n_fft, hop_length, win_length, n_input_misi_layers)
-    if input_misi is not None:
-        misi.load_state_dict(torch.load(input_misi))
-    for _ in range(n_misi_layers - n_input_misi_layers):
-        misi.add_layer()
-
-    if not is_misi_trainable:
-        params = model.parameters()
-    else:
-        params = list(model.parameters()) + list(misi.parameters())
-    optimizer = torch.optim.Adam(params, lr=1e-3)
+    model = ChimeraMagPhasebook(freq_bins, 2, 20, N=600)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    if input_checkpoint is not None:
+        checkpoint = torch.load(input_checkpoint)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        model.train()
 
     def forward(model, batch, states=None):
         stft = lambda x: torch.stft(
-            x.reshape(x.shape[:-1].numel(), seconds * target_freq),
+            x.reshape(x.shape[:-1].numel(), int(seconds * target_freq)),
             n_fft, hop_length, win_length, window=torch.hann_window(n_fft)
         ).reshape(*x.shape[:-1], freq_bins, spec_time, 2)
+        istft = lambda x: torchaudio.functional.stft(
+            x.reshape(x.shape[:-3].numel(), freq_bins, spec_time, 2),
+            n_fft, hop_length, win_length, window=torch.hann_window(n_fft)
+        ).reshape(*x.shape[:-3], int(seconds * target_freq))
 
         x, s = batch[:, 2, :], batch[:, :2, :]
         X, S = stft(x), stft(s)
 
         embd, (mag, phasep, com), states = model(
-            torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-24)),
+            torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
             outputs=['mag', 'phasep', 'com'],
             states=states
         )
-        states = tuple(state.detach() for state in states)
+        states[0].detach_()
+        states[1].detach_()
 
         # compute loss
         if loss_function == 'chimera++':
@@ -144,7 +133,7 @@ def main():
                 + 0.5 * loss_csa(com, X, S)
         elif loss_function == 'wave':
             Shat = comp_mul(com, X.unsqueeze(1))
-            shat = misi(Shat, x)
+            shat = istft(Shat)
             loss = loss_wa(shat, s)
         return loss, states
 
@@ -156,7 +145,7 @@ def main():
         states = None
         model.train()
         for step, (batch, batch_end) in enumerate(
-                generate_batch(dataloader_train, target_freq * seconds), 1):
+                generate_batch(dataloader_train, int(target_freq * seconds)), 1):
             loss, states = forward(model, batch, states)
             if batch_end:
                 states = None
@@ -165,6 +154,7 @@ def main():
             ave_loss = sum_loss / total_batch
 
             # Zero gradients, perform a backward pass, and update the weights.
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             sum_grad = sum(
@@ -172,11 +162,15 @@ def main():
                 for n, p in model.named_parameters()
                 if 'blstm' in n and p.grad is not None
             )
-            optimizer.zero_grad()
+            all_grad = sum(
+                torch.sum(torch.abs(p.grad))
+                for n, p in model.named_parameters()
+                if p.grad is not None
+            )
 
             # Print learning statistics
             curr_output =\
-                f'\repoch {epoch} step {step} loss={ave_loss} lstm-grad={sum_grad}'
+                f'\repoch {epoch} step {step} loss={ave_loss} all-grad={all_grad} lstm-grad={sum_grad}'
             sys.stdout.write('\r' + ' ' * last_output_len)
             sys.stdout.write(curr_output)
             sys.stdout.flush()
@@ -188,7 +182,7 @@ def main():
             total_batch = 0
             states = None
             for (batch, batch_end) in generate_batch(
-                    dataloader_validation, target_freq * seconds):
+                    dataloader_validation, int(target_freq * seconds)):
                 loss, states = forward(model, batch, states)
                 if batch_end:
                     states = None
@@ -202,10 +196,13 @@ def main():
         sys.stdout.write(f'\repoch {epoch} loss={ave_loss} val={ave_val_loss}\n')
 
     # save
-    if output_model is not None:
-        torch.save(model.state_dict(), output_model)
-    if is_misi_trainable and output_misi is not None:
-        torch.save(misi.state_dict(), output_misi)
+    model.eval()
+    if output_checkpoint is not None:
+        torch.save({
+            'epoch': initial_epoch+train_epoch-1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }, output_checkpoint)
 
 def comp_mul(X, Y):
     (X_re, X_im), (Y_re, Y_im) = X.unbind(-1), Y.unbind(-1)
