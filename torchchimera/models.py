@@ -22,15 +22,17 @@ class ChimeraBase(torch.nn.Module):
         return self.blstm_layer(x.transpose(1, 2), initial_states) # (B, T, 2*N)
 
 class EmbeddingHead(torch.nn.Module):
-    def __init__(self, input_dim, freq_bins, embed_dim):
+    def __init__(self, input_dim, freq_bins, embed_dim,
+                 activation=torch.nn.Sigmoid()):
         super(EmbeddingHead, self).__init__()
         self.input_dim = input_dim
         self.freq_bins = freq_bins
         self.embed_dim = embed_dim
         self.embed_layer = torch.nn.Linear(input_dim, freq_bins*embed_dim)
+        self.activation = activation
     def forward(self, x):
         batch_size = x.shape[0]
-        out_embed = torch.sigmoid(self.embed_layer(x)) # (B, T, F*D)
+        out_embed = self.activation(self.embed_layer(x)) # (B, T, F*D)
         out_embed = out_embed.reshape(
             batch_size,
             out_embed.shape.numel() // (batch_size * self.embed_dim),
@@ -124,10 +126,10 @@ class ChimeraPlusPlus(torch.nn.Module):
             out_states
 
 class ChimeraMagPhasebook(torch.nn.Module):
-    def __init__(self, F, C, D, N=400):
+    def __init__(self, F, C, D, N=400, embed_activation=torch.nn.Sigmoid()):
         super(ChimeraMagPhasebook, self).__init__()
         self.base = ChimeraBase(F, N)
-        self.embed_head = EmbeddingHead(2*N, F, D)
+        self.embed_head = EmbeddingHead(2*N, F, D, embed_activation)
         self.mag_base = BaseMaskHead(
             2*N, F, C, 3, torch.nn.Softmax(dim=-1)
         )
