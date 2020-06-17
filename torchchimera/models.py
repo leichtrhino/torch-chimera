@@ -14,6 +14,28 @@ class ChimeraBase(torch.nn.Module):
             batch_first=True, bidirectional=True,
             dropout=dropout
         )
+        for name, param in self.blstm_layer.named_parameters():
+            N = self.hidden_size
+            if 'weight_ih' in name:
+                for i, gain in enumerate([
+                        torch.nn.init.calculate_gain('sigmoid'),
+                        torch.nn.init.calculate_gain('sigmoid'),
+                        torch.nn.init.calculate_gain('tanh'),
+                        torch.nn.init.calculate_gain('sigmoid')
+                ]):
+                    torch.nn.init.xavier_uniform_(param[i*N:(i+1)*N], gain)
+            elif 'weight_hh' in name:
+                for i, gain in enumerate([
+                        torch.nn.init.calculate_gain('sigmoid'),
+                        torch.nn.init.calculate_gain('sigmoid'),
+                        torch.nn.init.calculate_gain('tanh'),
+                        torch.nn.init.calculate_gain('sigmoid')
+                ]):
+                    torch.nn.init.orthogonal_(param[i*N:(i+1)*N], gain)
+            elif 'bias' in name:
+                param.data.fill_(0)
+                param.data[N:2*N].fill_(1) # for forget gate
+
     def forward(self, x, initial_states=None):
         if initial_states is None:
             batch_size = x.shape[0]
