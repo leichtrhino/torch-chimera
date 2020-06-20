@@ -2,6 +2,30 @@
 import torch
 from math import pi
 
+def _initialize_lstm_weights(lstm_layer, hidden_size):
+    N = hidden_size
+    for name, param in lstm_layer.named_parameters():
+        N = hidden_size
+        if 'weight_ih' in name:
+            for i, gain in enumerate([
+                    torch.nn.init.calculate_gain('sigmoid'),
+                    torch.nn.init.calculate_gain('sigmoid'),
+                    torch.nn.init.calculate_gain('tanh'),
+                    torch.nn.init.calculate_gain('sigmoid')
+            ]):
+                torch.nn.init.xavier_uniform_(param[i*N:(i+1)*N], gain)
+        elif 'weight_hh' in name:
+            for i, gain in enumerate([
+                    torch.nn.init.calculate_gain('sigmoid'),
+                    torch.nn.init.calculate_gain('sigmoid'),
+                    torch.nn.init.calculate_gain('tanh'),
+                    torch.nn.init.calculate_gain('sigmoid')
+            ]):
+                torch.nn.init.orthogonal_(param[i*N:(i+1)*N], gain)
+        elif 'bias' in name:
+            param.data.fill_(0)
+            param.data[N:2*N].fill_(1) # for forget gate
+
 # input: (batch_size, freq_bins, time)
 # output: (batch_size, time, 2*n_hidden_states)
 class ChimeraBase(torch.nn.Module):
@@ -14,27 +38,7 @@ class ChimeraBase(torch.nn.Module):
             batch_first=True, bidirectional=True,
             dropout=dropout
         )
-        for name, param in self.blstm_layer.named_parameters():
-            N = self.hidden_size
-            if 'weight_ih' in name:
-                for i, gain in enumerate([
-                        torch.nn.init.calculate_gain('sigmoid'),
-                        torch.nn.init.calculate_gain('sigmoid'),
-                        torch.nn.init.calculate_gain('tanh'),
-                        torch.nn.init.calculate_gain('sigmoid')
-                ]):
-                    torch.nn.init.xavier_uniform_(param[i*N:(i+1)*N], gain)
-            elif 'weight_hh' in name:
-                for i, gain in enumerate([
-                        torch.nn.init.calculate_gain('sigmoid'),
-                        torch.nn.init.calculate_gain('sigmoid'),
-                        torch.nn.init.calculate_gain('tanh'),
-                        torch.nn.init.calculate_gain('sigmoid')
-                ]):
-                    torch.nn.init.orthogonal_(param[i*N:(i+1)*N], gain)
-            elif 'bias' in name:
-                param.data.fill_(0)
-                param.data[N:2*N].fill_(1) # for forget gate
+        _initialize_lstm_weights(self.blstm_layer, self.hidden_size)
 
     def forward(self, x, initial_states=None):
         if initial_states is None:
