@@ -79,9 +79,11 @@ class ResidualChimeraBase(torch.nn.Module):
             out_lstm, (h_n, c_n) = self.blstm_layers[i](
                 x, (h_0[i*2:(i+1)*2], c_0[i*2:(i+1)*2])
             )
-            x = (self.linear(x) if i == 0 else x) + out_lstm
             if i < self.num_layers - 1:
-                x = self.dropout_layer(x)
+                out_lstm = self.dropout_layer(out_lstm)
+                x = (self.linear(x) if i == 0 else x) + out_lstm
+            else:
+                x = out_lstm
             h_n_list.append(h_n)
             c_n_list.append(c_n)
         return x, (torch.cat(h_n_list), torch.cat(c_n_list))
