@@ -11,15 +11,30 @@ from torchchimera.transforms import Resample
 from torchchimera.transforms import Compose
 from torchchimera.submodels import MisiNetwork
 from torchchimera.models import ChimeraMagPhasebook
+from torchchimera.losses import loss_wa
 from torchchimera.metrics import eval_snr
 from torchchimera.metrics import eval_si_sdr
 
+class CropRight(torch.nn.Module):
+    def __init__(self, waveform_length):
+        super(CropRight, self).__init__()
+        self.waveform_length = waveform_length
+    def forward(self, x):
+        if x.shape[-1] < self.waveform_length:
+            offset_end = self.waveform_length - x.shape[-1]
+            pad_end = torch.zeros(x.shape[0], offset_end)
+            x = torch.cat((x, pad_end), dim=-1)
+        elif x.shape[-1] > self.waveform_length:
+            x = x[:, :self.waveform_length]
+        return x
+
 class SimpleTransform(torch.nn.Module):
-    def __init__(self, orig_freq=44100, target_freq=16000):
+    def __init__(self, waveform_length, orig_freq=44100, target_freq=16000):
         super(SimpleTransform, self).__init__()
         self.transform = Compose([
             MixTransform([(0, 1, 2), 3, (0, 1, 2, 3)]),
-            Resample(orig_freq=orig_freq, new_freq=target_freq)
+            Resample(orig_freq=orig_freq, new_freq=target_freq),
+            CropRight(waveform_length)
         ])
     def forward(self, x):
         return self.transform(x)
@@ -41,41 +56,50 @@ def from_embedding(embedding, n_channels, n_jobs=-1):
     return mask
 
 def main():
-    torch.set_printoptions(precision=8)
     dsd_path = '/Volumes/Buffalo 2TB/Datasets/DSD100'
-    model_file = 'checkpoint-wa-epoch-5.tar'
+    model_file = 'checkpoint-dc-epoch-1.tar'
     batch_size = 4
     batch_idx = 4
     orig_freq = 44100
-    target_freq = 8000
-    seconds = 3.2
+    target_freq = 44100
+    seconds = 4.5
 
-    n_fft = 256
-    win_length = 256
-    hop_length = 64
+    n_fft = 2048
+    win_length = 2048
+    hop_length = 512
 
     freq_bins, spec_time, _ = torch.stft(
         torch.Tensor(int(seconds * target_freq)), n_fft, hop_length, win_length
     ).shape
+    (waveform_length,) = torchaudio.functional.istft(
+        torch.Tensor(freq_bins, spec_time, 2), n_fft, hop_length, win_length
+    ).shape
 
     window = torch.sqrt(torch.hann_window(n_fft))
     stft = lambda x: torch.stft(
-        x.reshape(x.shape[:-1].numel(), int(seconds * target_freq)),
+        x.reshape(x.shape[:-1].numel(), waveform_length),
         n_fft, hop_length, win_length, window=window
     ).reshape(*x.shape[:-1], freq_bins, spec_time, 2)
     istft = lambda X: torchaudio.functional.istft(
         X.reshape(X.shape[:-3].numel(), freq_bins, spec_time, 2),
         n_fft, hop_length, win_length, window=window
-    ).reshape(*X.shape[:-3], int(seconds * target_freq))
-    comp_mul = lambda X, Y: torch.stack(
-        (X.unbind(-1)[0] * Y.unbind(-1)[0] - X.unbind(-1)[1] * Y.unbind(-1)[1],
-         X.unbind(-1)[0] * Y.unbind(-1)[1] + X.unbind(-1)[1] * Y.unbind(-1)[0]),
-        dim=-1
-    )
+    ).reshape(*X.shape[:-3], waveform_length)
+    def comp_mul(X, Y):
+        (X_re, X_im), (Y_re, Y_im) = X.unbind(-1), Y.unbind(-1)
+        return torch.stack((
+            X_re * Y_re - X_im * Y_im,
+            X_re * Y_im + X_im * Y_re
+        ), dim=-1)
+
 
     dataset = torch.utils.data.Subset(
         DSD100(dsd_path, 'Test', int(seconds * orig_freq),
-               transform=SimpleTransform(orig_freq, target_freq)),
+               transform=SimpleTransform(
+                   waveform_length,
+                   orig_freq=orig_freq,
+                   target_freq=target_freq
+               )
+        ),
         indices=list(range(batch_idx*batch_size, (batch_idx+1)*batch_size))
     )
     dataloader = torch.utils.data.DataLoader(
@@ -84,38 +108,27 @@ def main():
     model = ChimeraMagPhasebook(freq_bins, 2, 20, N=600)
     model.load_state_dict(torch.load(model_file)['model_state_dict'])
     model.eval()
-    misi_layer = MisiNetwork(n_fft, hop_length, win_length, 1)
+    #misi_layer = MisiNetwork(n_fft, hop_length, win_length, 1)
 
     batch, _ = next(iter(dataloader))
-    s1, s2, x = batch.unbind(1)
-    s = torch.stack((s1, s2), dim=1)
+    s, x = batch[:, :2, :], batch[:, 2, :]
     S, X = stft(s), stft(x)
-    X_abs = torch.sqrt(torch.sum(X**2, dim=-1))
-    X_phase = X / X_abs.clamp(min=1e-24).unsqueeze(-1)
-    S_abs = S.norm(p=2, dim=-1)
+    S_abs, X_abs = S.norm(p=2, dim=-1), X.norm(p=2, dim=-1)
     Y = torch.eye(2)[
         torch.argmax(S.norm(p=2, dim=-1), dim=1)
         .reshape(batch.shape[0], freq_bins*spec_time)
     ].reshape(batch_size, freq_bins, spec_time, 2)\
     .permute(0, 3, 1, 2).numpy()
 
-    states = None
-    embd = np.zeros((0, spec_time, freq_bins, 20))
-    com = np.zeros((0, 2, freq_bins, spec_time, 2))
-    for x_abs in X_abs:
-        with torch.no_grad():
-            states = None
-            _embd, (_com,), states = model(
-                torch.log10(x_abs.clamp(min=1e-24)).unsqueeze(0),
-                outputs=['com'], states=states)
-        _embd = _embd.detach()\
-                     .reshape(1, spec_time, freq_bins, 20)\
-                     .numpy()
-        _com = _com.detach().numpy()
-        embd = np.concatenate((embd, _embd))
-        com = np.concatenate((com, _com))
-    '''
-    Yhat = from_embedding(embd, 2)
+    with torch.no_grad():
+        embd, (com,), states = model(
+            torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
+            outputs=['com'],
+            states=None
+        )
+    embd = embd.reshape(batch.shape[0], -1, freq_bins, 20)
+    #'''
+    Yhat = from_embedding(embd.numpy(), 2)
     for bi, (y, yhat) in enumerate(zip(Y, Yhat), 1):
         C = y.shape[0]
         vmax = torch.max(X[bi-1])
@@ -129,41 +142,20 @@ def main():
             #plt.imshow(_yhat, aspect='auto')
             plt.subplot(C, 4, (ci-1)*4+4)
             #plt.imshow(comp_mul(torch.from_numpy(com[bi-1][ci-1]), X[bi-1]).norm(p=2, dim=-1).numpy(), aspect='auto', vmin=0, vmax=vmax)
-            plt.imshow(torch.from_numpy(com[bi-1][ci-1]).norm(p=2, dim=-1).numpy() * X_abs.numpy()[bi-1], aspect='auto', vmin=0, vmax=vmax)
+            plt.imshow((com[bi-1][ci-1].norm(p=2, dim=-1) * X_abs[bi-1]).numpy(), aspect='auto', vmin=0, vmax=vmax)
             #plt.imshow(torch.from_numpy(com[bi-1][ci-1]).norm(p=2, dim=-1).numpy(), aspect='auto')
-        #plt.subplots_adjust(bottom=0.1, right=0.8, top=0.9)
-        #cax = plt.axes([0.85, 0.1, 0.075, 0.8])
-        #plt.colorbar(cax=cax)
-        plt.tight_layout()
         plt.show()
-    '''
-    #com = com.detach()
-    phase_comp = lambda X: torch.atan2(*X.split(1, dim=-1)[::-1]).squeeze(-1)
-    S_abs = S.norm(p=2, dim=-1)
-    S_phase = phase_comp(S)
-    X_abs = X.norm(p=2, dim=-1).unsqueeze(1)
-    X_phase = phase_comp(X.unsqueeze(1))
-    spectrum = torch.min(
-        input=torch.max(
-            input=S_abs * torch.cos(S_phase - X_phase),
-            other=torch.zeros_like(S_abs)
-        ),
-        other=2*X_abs
-    )
-    Shat = comp_mul(torch.from_numpy(com), X.unsqueeze(1))
+    #'''
+    Shat = comp_mul(com, X.unsqueeze(1))
     #shat = misi_layer(Shat, x)
     shat = istft(Shat)
-    s = torchaudio.functional.istft(
-        S.reshape(batch_size*2, freq_bins, spec_time, 2),
-        n_fft, hop_length, win_length,
-        window=torch.hann_window(n_fft)
-    ).reshape(batch_size, 2, int(seconds * target_freq))
 
+    print(loss_wa(shat, s))
     print(eval_snr(shat, s))
     print(eval_si_sdr(shat, s))
 
-    shat = shat.transpose(0, 1).reshape(2, batch_size * int(seconds * target_freq))
-    s = s.transpose(0, 1).reshape(2, batch_size * int(seconds * target_freq))
+    shat = shat.transpose(0, 1).reshape(2, batch_size * waveform_length)
+    s = s.transpose(0, 1).reshape(2, batch_size * waveform_length)
 
     for i_channel, (_s, _shat) in enumerate(zip(s, shat)):
         torchaudio.save(f's_{i_channel}.wav', _s, target_freq)
