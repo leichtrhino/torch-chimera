@@ -193,9 +193,13 @@ class ChimeraPlusPlus(torch.nn.Module):
             out_states
 
 class ChimeraMagPhasebook(torch.nn.Module):
-    def __init__(self, F, C, D, N=400, embed_activation=torch.nn.Sigmoid()):
+    def __init__(self, F, C, D, N=400, embed_activation=torch.nn.Sigmoid(),
+                 residual_base=False):
         super(ChimeraMagPhasebook, self).__init__()
-        self.base = ChimeraBase(F, N)
+        if residual_base:
+            self.base = ResidualChimeraBase(F, N)
+        else:
+            self.base = ChimeraBase(F, N)
         self.embed_head = EmbeddingHead(2*N, F, D, embed_activation)
         self.mag_base = BaseMaskHead(
             2*N, F, C, 3, torch.nn.Softmax(dim=-1)
