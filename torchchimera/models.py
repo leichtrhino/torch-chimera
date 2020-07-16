@@ -232,11 +232,28 @@ class ChimeraMagPhasebook(torch.nn.Module):
         return out_embed, out_masks, out_states
 
 class ChimeraCombook(torch.nn.Module):
-    def __init__(self, F, C, D, N=400):
-        super(RefactoredChimeraCombook, self).__init__()
-        self.base = ChimeraBase(F, N)
-        self.embed_head = EmbeddingHead(2*N, F, D)
-        self.mask_head = CombookMaskHead(2*N, F, C)
+    def __init__(self, F, C, D, N=400, embed_activation=torch.nn.Sigmoid(),
+                 residual_base=False):
+        super(ChimeraCombook, self).__init__()
+        if residual_base:
+            self.base = ResidualChimeraBase(F, N)
+        else:
+            self.base = ChimeraBase(F, N)
+        self.embed_head = EmbeddingHead(2*N, F, D, embed_activation)
+        self.mask_base = BaseMaskHead(
+            2*N, F, C, 12, torch.nn.Softmax(dim=-1)
+        )
+        self.re_mask_head = TrainableCodebookMaskHead(12)
+        self.im_mask_head = TrainableCodebookMaskHead(12)
     def forward(self, x, states=None):
         out_base, out_states = self.base(x, states)
-        return self.embed_head(out_base), self.mask_head(out_mask), out_states
+        out_mask_base = self.mask_base(out_base)
+        return\
+            self.embed_head(out_base),\
+            torch.stack(
+                (
+                    self.re_mask_head(out_mask_base),
+                    self.im_mask_head(out_mask_base)
+                ),
+                dim=-1),\
+            out_states
