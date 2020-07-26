@@ -103,7 +103,7 @@ class TrainableStftLayer(torch.nn.Module):
             1, self.n_fft+2, self.n_fft, stride=self.hop_length, bias=False,
             padding=self.hop_length * 2)
 
-        weight = torch.hann_window(n_fft) * _generate_dft_matrix(n_fft)
+        weight = torch.sqrt(torch.hann_window(n_fft)) * _generate_dft_matrix(n_fft)
         with torch.no_grad():
             self.conv.weight.copy_(weight.unsqueeze(1))
 
@@ -126,7 +126,7 @@ class TrainableIstftLayer(torch.nn.Module):
             padding=self.hop_length * 2
         )
 
-        weight = torch.hann_window(n_fft) * _generate_dft_matrix(n_fft)
+        weight = torch.sqrt(torch.hann_window(n_fft)) * _generate_dft_matrix(n_fft)
         with torch.no_grad():
             self.conv.weight.copy_(weight.unsqueeze(1))
 
@@ -156,9 +156,9 @@ class TrainableMisiLayer(torch.nn.Module):
         shat = self.istft_layer(Shat) # : (B*C, 1, W)
         delta = mixture - torch.sum(
             shat.reshape(batch_size, n_channels, waveform_length), dim=1
-        ) / n_channels # : (B, W)
+        ) # : (B, W)
         tmp = self.stft_layer(
-            shat + delta.repeat_interleave(n_channels, 0).unsqueeze(1)
+            shat + delta.repeat_interleave(n_channels, 0).unsqueeze(1) / n_channels
         ) # : (B*C, 2*F, T)
         phase = torch.nn.functional.normalize(
             tmp.reshape(batch_size*n_channels, 2, self.n_fft//2+1, spec_time),
