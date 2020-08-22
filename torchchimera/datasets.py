@@ -6,62 +6,51 @@ import pathlib
 
 import torch
 import torchaudio
+import resampy
 
 class Folder(torch.utils.data.Dataset):
-    def __init__(self, root_dir, waveform_length, transform=None):
-        self.waveform_length = waveform_length
+    def __init__(self, root_dir, sr, duration, transform=None):
+        self.sr = sr
+        self.duration = duration
+        self.out_waveform_length = int(sr * duration)
         self.transform = transform
         self.offsets = [0]
         self.rates = []
 
         self.paths = sorted(list(pathlib.Path(root_dir).glob('**/*.wav')))
 
-        self.max_length = 0 if waveform_length is None else waveform_length
         for p in self.paths:
             si, _ = torchaudio.info(str(p))
-            if waveform_length is None:
-                self.max_length = max(self.max_length, si.length // si.channels)
-            offset_diff = 1 if self.waveform_length is None else\
-                math.ceil(si.length / si.channels / self.waveform_length)
-            self.offsets.append(self.offsets[-1] + offset_diff)
+            if torchaudio.get_audio_backend() in ('sox', 'sox_io'):
+                n_frames = si.length // si.channels
+            elif torchaudio.get_audio_backend() == 'soundfile':
+                n_frames = si.length
+            n_segments = math.ceil(n_frames / si.rate / self.duration)
+            self.offsets.append(self.offsets[-1] + n_segments)
             self.rates.append(si.rate)
 
     def __len__(self):
         return self.offsets[-1]
 
-    def get_max_length(self):
-        return self.max_length
-
-    def _get_single_item(self, idx):
+    def __getitem__(self, idx):
         audio_idx = bisect.bisect(self.offsets, idx) - 1
         offset_idx = idx - self.offsets[audio_idx]
-        offset = 0 if self.waveform_length is None else\
-            offset_idx * self.waveform_length
-        num_frames = 0 if self.waveform_length is None else\
-            self.waveform_length
+        offset = offset_idx * int(self.duration * self.rates[audio_idx])
+        num_frames = int(self.rates[audio_idx] * self.duration)
         x, _ = torchaudio.load(
             str(self.paths[audio_idx]), offset=offset, num_frames=num_frames
         )
         x = x.mean(dim=0)
-        if self.waveform_length is not None and\
-           x.shape[-1] < self.waveform_length:
-            x = torch.cat((x, torch.zeros(self.waveform_length-x.shape[-1])))
-        return x, self.rates[audio_idx]
-
-    def __getitem__(self, idx):
-        if type(idx) == int:
-            waveform, rate = self._get_single_item(idx)
-            if callable(self.transform):
-                waveform = self.transform(waveform)
-            return waveform, rate
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        waveforms, rates = zip(*[self._get_single_item(i) for i in idx])
-        waveforms = torch.stack(waveforms)
-        if callable(self.transform):
-            waveforms = self.transform(waveforms)
-        return waveforms, rates
-
+        x = torch.Tensor(resampy.resample(
+            x.numpy(), self.rates[audio_idx], self.sr, axis=-1
+        ))
+        if x.shape[-1] > self.out_waveform_length:
+            x = x[:self.out_waveform_length]
+        if x.shape[-1] < self.out_waveform_length:
+            x = torch.cat((x, torch.zeros(self.out_waveform_length-x.shape[-1])))
+        if self.transform is not None:
+            x = self.transform(x)
+        return x
 
 class DSD100(torch.utils.data.Dataset):
     def __init__(self, root_dir, split, waveform_length,
