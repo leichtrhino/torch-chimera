@@ -60,6 +60,34 @@ class Folder(torch.utils.data.Dataset):
             x = self.transform(x)
         return x
 
+class FolderTuple(torch.utils.data.Dataset):
+    def __init__(self, root_dirs, sr, duration=None, transform=None):
+        self.folders = [
+            Folder(d, sr, duration, transform) for d in root_dirs
+        ]
+        self.unshuffle()
+
+    def __len__(self):
+        return min(len(f) for f in self.folders)
+
+    def shuffle(self):
+        idx_list = [
+            list(range(len(f))) for f in self.folders
+        ]
+        for il in idx_list:
+            random.shuffle(il)
+        self.idx_list = list(zip(*idx_list))
+
+    def unshuffle(self):
+        self.idx_list = [
+            tuple(i for _ in self.folders) for i in range(len(self))
+        ]
+
+    def __getitem__(self, idx):
+        x_list = [f[i] for f, i in zip(self.folders, self.idx_list[idx])]
+        segment_length = min(x.shape[-1] for x in x_list)
+        return torch.stack([x[:segment_length] for x in x_list])
+
 class DSD100(torch.utils.data.Dataset):
     def __init__(self, root_dir, split, waveform_length,
                  sources=('bass', 'drums', 'other', 'vocals'),
