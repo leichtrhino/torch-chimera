@@ -364,7 +364,7 @@ def train(args):
         ave_loss = 0
         last_output_len = 0
         if not args.sync:
-            dataset_train.shuffle()
+            train_dataset.shuffle()
         model.train()
         for step, batch in enumerate(train_loader, 1):
             x_in = make_x_in(batch, args)
@@ -386,7 +386,7 @@ def train(args):
 
         if args.validation_dir is not None:
             if not args.sync:
-                dataset_validation.shuffle()
+                validation_dataset.shuffle()
             model.eval()
             with torch.no_grad():
                 sum_val_loss = 0

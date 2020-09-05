@@ -3,6 +3,7 @@ import os
 import math
 import bisect
 import pathlib
+import random
 
 import torch
 import torchaudio
@@ -47,6 +48,10 @@ class Folder(torch.utils.data.Dataset):
             str(self.paths[audio_idx]), offset=offset, num_frames=num_frames
         )
         x = x.mean(dim=0)
+        if x.shape[-1] * self.sr / self.rates[audio_idx] < 1:
+            x = torch.zeros((
+                *x.shape[:-1], math.ceil(self.rates[audio_idx] / self.sr)
+            ))
         x = torch.Tensor(resampy.resample(
             x.numpy(), self.rates[audio_idx], self.sr, axis=-1
         ))
