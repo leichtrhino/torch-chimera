@@ -15,7 +15,7 @@ def loss_dc(embd, label, weight=None):
         + torch.sum(label.transpose(1, 2).bmm(label) ** 2) \
         - 2 * torch.sum(embd.transpose(1, 2).bmm(label) ** 2)
 
-def loss_dc_whitend(embd, label, weight=None):
+def loss_dc_whitened(embd, label, weight=None):
     if type(weight) == torch.Tensor:
         weight = torch.sqrt(weight).unsqueeze(-1)
         embd = embd * weight
