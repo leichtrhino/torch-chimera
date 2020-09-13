@@ -47,15 +47,18 @@ def loss_dc_whitened_(embd, label, weight=None):
         label = label * weight
     C = label.shape[2]
     D = embd.shape[2]
-    VtV = embd.transpose(1, 2).bmm(embd)
-    eigval, eigvec = torch.symeig(VtV, eigenvectors=True)
+    VtV = embd.transpose(1, 2).bmm(embd) + 1e-24 * torch.eye(D)
+    try:
+        eigval, eigvec = torch.symeig(VtV, eigenvectors=True)
+    except:
+        return loss_dc_whitened(embd, label, weight)
     eigval = (eigval + eigval.abs()) / 2
     isqrteigval = 1 / torch.sqrt(eigval)
     isqrteigval[eigval == 0] = 0
     V = embd.bmm(eigvec.bmm(torch.diag_embed(isqrteigval)).bmm(eigvec.transpose(1, 2)))
     Y = label
     YtV = Y.transpose(1, 2).bmm(V)
-    YtY = Y.transpose(1, 2).bmm(Y)
+    YtY = Y.transpose(1, 2).bmm(Y) + 1e-24 * torch.eye(C)
     return torch.sum((V - Y.bmm(YtY.inverse()).bmm(YtV)) ** 2)
 
 def permutation_free(loss_function):
