@@ -51,7 +51,7 @@ def loss_dc_whitened_(embd, label, weight=None):
     try:
         eigval, eigvec = torch.symeig(VtV, eigenvectors=True)
     except:
-        return loss_dc_whitened(embd, label, weight)
+        return loss_dc_whitened(embd, label)
     eigval = (eigval + eigval.abs()) / 2
     isqrteigval = 1 / torch.sqrt(eigval)
     isqrteigval[eigval == 0] = 0
