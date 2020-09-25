@@ -21,7 +21,7 @@ from torchchimera.datasets import FolderTuple
 from torchchimera.models import ChimeraMagPhasebook
 from torchchimera.losses import permutation_free
 from torchchimera.losses import loss_mi_tpsa
-from torchchimera.losses import loss_dc_whitened_
+from torchchimera.losses import loss_dc_deep_lda
 from torchchimera.losses import loss_wa
 from torchchimera.losses import loss_csa
 from torchchimera.metrics import eval_snr
@@ -126,7 +126,7 @@ def compute_loss(x_in, y_pred, args):
         Y = dc_label_matrix(S)
         weight = dc_weight_matrix(X)
         alpha = 0.975
-        loss_dc = alpha * loss_dc_whitened_(embd, Y, weight)
+        loss_dc = alpha * loss_dc_deep_lda(embd, Y, weight)
         if args.permutation_free:
             loss_mi = (1-alpha) * permutation_free(loss_mi_tpsa)(mag, X, S, gamma=2.)
         else:
