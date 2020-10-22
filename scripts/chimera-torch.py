@@ -468,6 +468,17 @@ def evaluate(args):
         model.load_state_dict(torch.load(args.input_model))
     model.eval()
 
+    if args.permutation_free:
+        eval_snr = torchchimera.metrics.permutation_free(
+            torchchimera.metrics.eval_snr, aggregate_functionn=max
+        )
+        eval_si_sdr = torchchimera.metrics.permutation_free(
+            torchchimera.metrics.eval_si_sdr, aggregate_function=max
+        )
+    else:
+        eval_snr = torchchimera.metrics.eval_snr
+        eval_si_sdr = torchchimera.metrics.eval_si_sdr
+
     # evaluation loop
     if args.output_file is None:
         of = sys.stdout
