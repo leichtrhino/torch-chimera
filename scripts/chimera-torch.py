@@ -382,6 +382,7 @@ def train(args):
         model.to(args.device)
 
     # train and validation loop
+    epoch = initial_epoch
     for epoch in range(initial_epoch+1, initial_epoch+args.epoch+1):
         sum_loss = 0
         total_batch = 0
