@@ -22,7 +22,7 @@ def loss_dc_deep_lda(embd, label, weight=None):
         label = label * weight
     C = label.shape[2]
     YtV = label.transpose(1, 2).bmm(embd)
-    YtY = label.transpose(1, 2).bmm(label) + 1e-24 * torch.eye(C)
+    YtY = label.transpose(1, 2).bmm(label) + 1e-24 * torch.eye(C, device=label.device)
     return torch.sum((embd - label.bmm(YtY.inverse().bmm(YtV))) ** 2)
 
 def loss_dc_whitened(embd, label, weight=None):

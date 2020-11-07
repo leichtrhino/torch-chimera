@@ -84,8 +84,8 @@ def dc_label_matrix(S):
     batch_size, n_channels, freq_bins, spec_time, _ = S.shape
     S_abs = S.norm(p=2, dim=-1)
     p = S_abs.transpose(1, 3).reshape(batch_size, spec_time*freq_bins, n_channels).softmax(dim=-1).cumsum(dim=-1)
-    r = torch.rand(batch_size, spec_time * freq_bins)
-    k = torch.eye(n_channels)[torch.argmin(torch.where(r.unsqueeze(-1) <= p, p, torch.ones_like(p)), dim=-1)]
+    r = torch.rand(batch_size, spec_time * freq_bins, device=S.device)
+    k = torch.eye(n_channels, device=S.device)[torch.argmin(torch.where(r.unsqueeze(-1) <= p, p, torch.ones_like(p)), dim=-1)]
     return k
 
 def dc_weight_matrix(X):
@@ -103,7 +103,7 @@ def comp_mul(X, Y):
     ), dim=-1)
 
 def make_x_in(batch, args):
-    window = torch.sqrt(torch.hann_window(args.n_fft))
+    window = torch.sqrt(torch.hann_window(args.n_fft, device=batch.device))
     stft = Stft(args.n_fft, args.hop_length, args.win_length, window)
     s, x = batch, batch.sum(dim=1)
     S, X = stft(s), stft(x)
@@ -118,7 +118,7 @@ def forward(model, x_in, args):
     return embd, (mag, com)
 
 def compute_loss(x_in, y_pred, args):
-    window = torch.sqrt(torch.hann_window(args.n_fft))
+    window = torch.sqrt(torch.hann_window(args.n_fft, device=x_in[0].device))
     istft = Istft(args.n_fft, args.hop_length, args.win_length, window)
     s, x, S, X = x_in
     embd, (mag, com) = y_pred
@@ -142,7 +142,7 @@ def compute_loss(x_in, y_pred, args):
     return loss
 
 def predict_waveform(model, mixture, args):
-    window = torch.sqrt(torch.hann_window(args.n_fft))
+    window = torch.sqrt(torch.hann_window(args.n_fft)).to(args.device)
     stft = Stft(args.n_fft, args.hop_length, args.win_length, window)
     istft = Istft(args.n_fft, args.hop_length, args.win_length, window)
     X = stft(mixture)
@@ -151,11 +151,25 @@ def predict_waveform(model, mixture, args):
         outputs=['com']
     )
     Shat = comp_mul(com, X.unsqueeze(1))
-    return istft(Shat).transpose(0, 1)
+    return istft(Shat)
 
 '''
 Command line arguments
 '''
+def add_general_argument(parser):
+    parser.add_argument('--gpu', action='store_true', help='enable cuda device')
+    parser.add_argument('--segment-duration', type=float, help='segment duration in seconds')
+    return parser
+
+def validate_general_argument(args, parser):
+    if args.gpu and not torch.cuda.is_available():
+        parser.error(f'cuda is not available')
+    # get prefered device
+    args.device = torch.device('cuda' if args.gpu else 'cpu')
+    if args.segment_duration is not None and args.segment_duration <= 0:
+        parser.error('--segment-duration is positive')
+    return args
+
 def add_training_io_argument(parser):
     parser.add_argument('--train-dir', nargs='+', required=True, help='directory of training dataset')
     parser.add_argument('--validation-dir', nargs='*', help="directory of validation dataset")
@@ -163,7 +177,6 @@ def add_training_io_argument(parser):
     parser.add_argument('--output-checkpoint', help='output checkout file')
     parser.add_argument('--input-model', help='input model file')
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
-    parser.add_argument('--segment-duration', type=float, help='segment duration in seconds')
     parser.add_argument('--sync', action='store_true', help='the dataset is synchronized (e.g. music and singing voice separation)')
     parser.add_argument('--permutation-free', action='store_true', help='enable permutation-free loss function')
     parser.add_argument('--log-file', help='log file')
@@ -187,8 +200,6 @@ def validate_training_io_argument(args, parser):
     if not args.output_model and not args.output_checkpoint\
        or args.output_model and args.output_checkpoint:
         parser.error('either --output-model or --output-checkpoint must be provided')
-    if args.segment_duration is not None and args.segment_duration <= 0:
-        parser.error('--segment-duration is positive')
     return args
 
 def add_prediction_io_argument(parser):
@@ -216,7 +227,6 @@ def add_evaluation_io_argument(parser):
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
     parser.add_argument('--output-file', help='output file')
     parser.add_argument('--log-file', help='log file')
-    parser.add_argument('--segment-duration', type=float, help='segment duration in seconds')
     parser.add_argument('--sync', action='store_true', help='the dataset is synchronized (e.g. music and singing voice separation)')
     parser.add_argument('--permutation-free', action='store_true', help='enable permutation-free evaluation function')
     return parser
@@ -231,8 +241,6 @@ def validate_evaluation_io_argument(args, parser):
         parser.error(f'input model "{args.input_model}" is not a file')
     if args.input_checkpoint and not os.path.isfile(args.input_checkpoint):
         parser.error(f'input checkpoint "{args.input_model}" is not a file')
-    if args.segment_duration is not None and args.segment_duration <= 0:
-        parser.error('--segment-duration is positive')
     return args
 
 def add_feature_argument(parser):
@@ -285,42 +293,51 @@ def parse_args():
     parser = ArgumentParser()
     subparser = parser.add_subparsers(help='<<subcommand help>>', dest='command')
     train_parser = subparser.add_parser('train', help='<<train help')
+    train_general_parser = train_parser.add_argument_group('general')
     train_io_parser = train_parser.add_argument_group('io')
     train_feature_parser = train_parser.add_argument_group('feature')
     train_model_parser = train_parser.add_argument_group('model')
     train_training_parser = train_parser.add_argument_group('training')
+    add_general_argument(train_general_parser)
     add_training_io_argument(train_io_parser)
     add_feature_argument(train_feature_parser)
     add_model_argument(train_model_parser)
     add_training_argument(train_training_parser)
 
     predict_parser = subparser.add_parser('predict', help='<<predict help>>')
+    predict_general_parser = predict_parser.add_argument_group('general')
     predict_io_parser = predict_parser.add_argument_group('io')
     predict_feature_parser = predict_parser.add_argument_group('feature')
     predict_model_parser = predict_parser.add_argument_group('model')
+    add_general_argument(predict_general_parser)
     add_prediction_io_argument(predict_io_parser)
     add_feature_argument(predict_feature_parser)
     add_model_argument(predict_model_parser)
 
     evaluate_parser = subparser.add_parser('evaluate', help='<<evaluate help>>')
+    evaluate_general_parser = evaluate_parser.add_argument_group('general')
     evaluate_io_parser = evaluate_parser.add_argument_group('io')
     evaluate_feature_parser = evaluate_parser.add_argument_group('feature')
     evaluate_model_parser = evaluate_parser.add_argument_group('model')
+    add_general_argument(evaluate_general_parser)
     add_evaluation_io_argument(evaluate_io_parser)
     add_feature_argument(evaluate_feature_parser)
     add_model_argument(evaluate_model_parser)
 
     args = parser.parse_args()
     if args.command == 'train':
+        validate_general_argument(args, parser)
         validate_training_io_argument(args, parser)
         validate_feature_argument(args, parser)
         validate_model_argument(args, parser)
         validate_training_argument(args, parser)
     elif args.command == 'predict':
+        validate_general_argument(args, parser)
         validate_prediction_io_argument(args, parser)
         validate_feature_argument(args, parser)
         validate_model_argument(args, parser)
     elif args.command == 'evaluate':
+        validate_general_argument(args, parser)
         validate_evaluation_io_argument(args, parser)
         validate_feature_argument(args, parser)
         validate_model_argument(args, parser)
@@ -353,9 +370,13 @@ def train(args):
         checkpoint = torch.load(args.input_checkpoint)
         initial_epoch = checkpoint['epoch']
         model.load_state_dict(checkpoint['model_state_dict'])
+        model.to(args.device)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     elif args.input_model is not None:
         model.load_state_dict(torch.load(args.input_model))
+        model.to(args.device)
+    else:
+        model.to(args.device)
 
     # train and validation loop
     for epoch in range(initial_epoch+1, initial_epoch+args.epoch+1):
@@ -367,6 +388,7 @@ def train(args):
             train_dataset.shuffle()
         model.train()
         for step, batch in enumerate(train_loader, 1):
+            batch = batch.to(args.device)
             x_in = make_x_in(batch, args)
             y_pred = forward(model, x_in, args)
             loss = compute_loss(x_in, y_pred, args)
@@ -392,6 +414,7 @@ def train(args):
                 sum_val_loss = 0
                 total_batch = 0
                 for batch in validation_loader:
+                    batch = batch.to(args.device)
                     x_in = make_x_in(batch, args)
                     y_pred = forward(model, x_in, args)
                     loss = compute_loss(x_in, y_pred, args)
@@ -466,6 +489,7 @@ def evaluate(args):
         model.load_state_dict(checkpoint['model_state_dict'])
     elif args.input_model is not None:
         model.load_state_dict(torch.load(args.input_model))
+    model.to(args.device)
     model.eval()
 
     if args.permutation_free:
@@ -487,6 +511,7 @@ def evaluate(args):
     print('data,channel,snr,si-sdr', file=of)
     with torch.no_grad():
         for data_i, s in enumerate(map(lambda s: s.unsqueeze(0), dataset), 1):
+            s = s.to(args.device)
             x = s.sum(dim=1)
             shat = predict_waveform(model, x, args)
             waveform_length = min(s.shape[-1], shat.shape[-1])

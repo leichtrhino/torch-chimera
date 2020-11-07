@@ -44,7 +44,10 @@ class ChimeraBase(torch.nn.Module):
         if initial_states is None:
             batch_size = x.shape[0]
             shape = (self.num_layers*2, x.shape[0], self.hidden_size)
-            initial_states = (torch.zeros(*shape), torch.zeros(*shape))
+            initial_states = (
+                torch.zeros(*shape, device=x.device),
+                torch.zeros(*shape, device=x.device)
+            )
         return self.blstm_layer(x.transpose(1, 2), initial_states) # (B, T, 2*N)
 
 class ResidualChimeraBase(torch.nn.Module):
@@ -143,9 +146,11 @@ class CodebookMaskHead(torch.nn.Module):
     def forward(self, x, mode='interpolate'):
         # valid modes are: 'interpolate', 'argmax'
         if mode == 'interpolate':
-            return torch.matmul(x, self.codebook)
+            return torch.matmul(x, self.codebook.to(x.device))
         elif mode == 'argmax':
-            return self.codebook[torch.argmax(x, dim=-1)]
+            return self.codebook[
+                torch.argmax(x.to(codebook.device), dim=-1)
+            ].to(x.device)
         else:
             raise ValueError(f'invalid mode "{mode}"')
 
