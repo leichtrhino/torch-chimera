@@ -132,9 +132,12 @@ def compute_loss(x_in, y_pred, args):
         else:
             loss_mi = (1-alpha) * loss_mi_tpsa(mag, X, S, gamma=2.)
         loss = loss_dc + loss_mi
-    elif loss_function == 'wave':
+    elif args.loss_function == 'wave-approximation':
         Shat = comp_mul(com, X.unsqueeze(1))
         shat = istft(Shat)
+        waveform_length = min(s.shape[-1], shat.shape[-1])
+        s = s[:, :, :waveform_length]
+        shat = shat[:, :, :waveform_length]
         if args.permutation_free:
             loss = permutation_free(loss_wa)(shat, s)
         else:
