@@ -226,6 +226,7 @@ def validate_prediction_io_argument(args, parser):
 
 def add_evaluation_io_argument(parser):
     parser.add_argument('--data-dir', nargs='+', required=True, help="directory of validation dataset")
+    parser.add_argument('--cutoff-rms', type=float, help='cutoff RMS (in db)')
     parser.add_argument('--input-model', help='input model file')
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
     parser.add_argument('--output-file', help='output file')
@@ -516,6 +517,19 @@ def evaluate(args):
     with torch.no_grad():
         for data_i, s in enumerate(map(lambda s: s.unsqueeze(0), dataset), 1):
             s = s.to(args.device)
+            if args.cutoff_rms:
+                window = torch.sqrt(torch.hann_window(args.n_fft)).to(args.device)
+                stft = Stft(args.n_fft, args.hop_length, args.win_length, window)
+                S = stft(s.squeeze(0))
+                S_pow = torch.sum(stft(s.squeeze(0))**2, dim=-1)
+                rms = 10 * torch.log10(torch.mean(S_pow, dim=1))
+                is_no_silence = torch.all(rms > args.cutoff_rms, dim=0)
+                S = S[:, :, is_no_silence, :]
+                if S.shape[2] < 4: # 4: n_fft // hop_length
+                    continue
+                istft = Istft(args.n_fft, args.hop_length, args.win_length, window)
+                s = istft(S).unsqueeze(0)
+
             x = s.sum(dim=1)
             shat = predict_waveform(model, x, args)
             waveform_length = min(s.shape[-1], shat.shape[-1])
