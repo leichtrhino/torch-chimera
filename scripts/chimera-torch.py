@@ -469,6 +469,8 @@ def predict(args):
 
     # predict and save
     shat = predict_waveform(model, batch, args)
+    if shat.dim() == 3:
+        shat = shat.squeeze(0)
     for f, s in zip(args.output_files, shat):
         torchaudio.save(f, s, sample_rate=args.sr)
 
