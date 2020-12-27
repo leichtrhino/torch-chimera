@@ -393,6 +393,10 @@ def train(args):
             train_dataset.shuffle()
         model.train()
         for step, batch in enumerate(train_loader, 1):
+            if not args.sync:
+                batch = batch\
+                    / batch.abs().max(-1, keepdims=True)[0].clamp(min=1e-32)\
+                    * 10**(-(0.9*torch.rand(*batch.shape[:-1], 1)+0.1)/10)
             batch = batch.to(args.device)
             x_in = make_x_in(batch, args)
             y_pred = forward(model, x_in, args)
