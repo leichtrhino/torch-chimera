@@ -36,17 +36,36 @@ See `requirements.txt` for more information.
 #### Pretrained models
 
 The pretrained models are based on the phasebook model [Roux et al. ICASSP (2019)].
-The following table shows the list of pretrained models.
 
-| Model name and link | Dataset | SNR    | SI-SDR | Note |
-|---------------------|---------|--------|--------|------|
-| [dsd100-wa020.pth]  | DSD100  | 3.1361 | -5.177 |      |
-| [dsd100-dc025.pth]  | DSD100  | NA     | NA     |      |
+##### Models trained on DSD100
 
-**Note**: SNR and SI-SDR are average of all dataset and channels.
+These models are trained with 
 
-[dsd100-wa020.pth]: https://drive.google.com/file/d/1gCatPiG-JGE2dwRX7E8PkvbcPR-Y2cKF/view?usp=sharing
-[dsd100-dc025.pth]: https://drive.google.com/file/d/1EaP4pH2hnNqY6ZfbStWD6B7qWyfspfnM/view?usp=sharing
+- sr = 44100
+- fft-size = 1024
+- hop-length = 256
+- frame size per sample: ≈500 (3 seconds)
+- N(unit size) = 600 for each BLSTM layer
+- the other parameters: the same as [Roux et al. ICASSP (2019)].
+
+| loss-function  |  epoch |   SNR |  SI-SDR | Note                                         |
+| :------------- | -----: | ----: | ------: | :-------------------------------------       |
+| dc             |     10 |  4.27 |    2.22 |                                              |
+| dc             |     30 |  3.12 |    0.58 |                                              |
+| dc             |     40 |  3.16 |    0.57 |                                              |
+| dc             |     50 |  4.13 |    1.97 |                                              |
+| dc             |     60 |  3.86 |    1.68 |                                              |
+| dc             |     70 |  3.74 |    1.53 |                                              |
+| wa             |     10 |  7.05 |    5.67 |                                              |
+| wa             |     20 |  7.18 |    5.81 |                                              |
+| wa             |     30 |  7.20 |    5.82 | model availables at [model-dsd100-wa-30.pth] |
+| wa             |     40 |  7.03 |    5.65 |                                              |
+| wa             |     50 |  6.94 |    5.56 |                                              |
+| wa             |     60 |  6.98 |    5.60 |                                              |
+
+**Note**: For evaluation, the DSD100 test set was split into 3 seconds of audio, excluding silent frames (< -10db).
+
+[model-dsd100-wa-30.pth]: https://drive.google.com/file/d/1Nk2McY4Csr86mAV-f7qvic5fGM_t9Sx5/view?usp=sharing
 
 #### Sample script
 
@@ -54,8 +73,10 @@ Source separation can be done with the following script using the model `models/
 
 ```shell
 python scripts/chimera-torch.py predict \
+  --sr 44100 \
+  --n-fft 1024 \
+  --n-hidden 600 \
   --input-model models/model.pth \
-  --residual \
   --input-file mixture.wav \
   --output-files instrumental.wav vocal.wav 
 ```
