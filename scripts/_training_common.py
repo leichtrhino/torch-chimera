@@ -169,3 +169,20 @@ def predict_waveform(model, mixture, stft_setting):
     Shat = comp_mul(com, X.unsqueeze(1))
     return istft(Shat)
 
+def exclude_silence(s, stft_setting, cutoff_rms):
+    n_fft = stft_setting.n_fft
+    hop_length = stft_setting.hop_length
+    win_length = stft_setting.win_length
+
+    window = torch.sqrt(torch.hann_window(n_fft)).to(s.device)
+    stft = Stft(n_fft, hop_length, win_length, window)
+    S = stft(s.squeeze(0))
+    S_pow = torch.sum(stft(s.squeeze(0))**2, dim=-1)
+    rms = 10 * torch.log10(torch.mean(S_pow, dim=1))
+    is_no_silence = torch.all(rms > cutoff_rms, dim=0)
+    S = S[:, :, is_no_silence, :]
+    if S.shape[2] < 4: # 4: n_fft // hop_length
+        return None
+    istft = Istft(n_fft, hop_length, win_length, window)
+    s = istft(S).unsqueeze(0)
+    return s

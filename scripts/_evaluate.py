@@ -15,8 +15,7 @@ from torchchimera.metrics import eval_snr
 from torchchimera.metrics import eval_si_sdr
 
 from _training_common import predict_waveform
-from _training_common import Stft
-from _training_common import Istft
+from _training_common import exclude_silence
 
 def add_evaluation_io_argument(parser):
     parser.add_argument('--data-dir', nargs='+', required=True, help="directory of validation dataset")
@@ -87,20 +86,12 @@ def evaluate(args):
         for data_i, s in enumerate(map(lambda s: s.unsqueeze(0), dataset), 1):
             s = s.to(args.device)
             if args.cutoff_rms:
-                window = torch.sqrt(torch.hann_window(args.n_fft)).to(args.device)
-                stft = Stft(args.n_fft, args.hop_length, args.win_length, window)
-                S = stft(s.squeeze(0))
-                S_pow = torch.sum(stft(s.squeeze(0))**2, dim=-1)
-                rms = 10 * torch.log10(torch.mean(S_pow, dim=1))
-                is_no_silence = torch.all(rms > args.cutoff_rms, dim=0)
-                S = S[:, :, is_no_silence, :]
-                if S.shape[2] < 4: # 4: n_fft // hop_length
+                s = exclude_silence(s, args.stft_setting, args.cutoff_rms)
+                if s is None:
                     continue
-                istft = Istft(args.n_fft, args.hop_length, args.win_length, window)
-                s = istft(S).unsqueeze(0)
 
             x = s.sum(dim=1)
-            shat = predict_waveform(model, x, args)
+            shat = predict_waveform(model, x, args.stft_setting)
             waveform_length = min(s.shape[-1], shat.shape[-1])
             s = s[:, :, :waveform_length]
             shat = shat[:, :, :waveform_length]
