@@ -38,6 +38,7 @@ def predict(args):
     )
     if batch.dim() == 1:
         batch = batch.unsqueeze(0)
+    batch = batch.to(args.device)
 
     # build (and load) a model
     checkpoint = torch.load(args.input_checkpoint)
@@ -65,6 +66,8 @@ def predict(args):
         residual_base=args.residual
     )
     model.load_state_dict(checkpoint['model']['state_dict'])
+    model.to(args.device)
+    model.eval()
 
     # predict and save
     shat = predict_waveform(model, batch, args.stft_setting)
