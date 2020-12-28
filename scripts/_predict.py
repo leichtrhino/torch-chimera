@@ -19,7 +19,6 @@ from _training_common import predict_waveform
 def add_prediction_io_argument(parser):
     parser.add_argument('--input-file', required=True, help='input wav file')
     parser.add_argument('--output-files', required=True, nargs='+', help='output wav files')
-    parser.add_argument('--input-model', help='input model file')
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
     parser.add_argument('--log-file', help='log file')
     return parser
@@ -27,12 +26,8 @@ def add_prediction_io_argument(parser):
 def validate_prediction_io_argument(args, parser):
     if not os.path.isfile(args.input_file):
         parser.error(f'"{args.input_file}" is not a file')
-    if args.input_model and args.input_checkpoint:
-        parser.error('passing both --input-model and --input-checkpoint is prohibited')
-    if args.input_model and not os.path.isfile(args.input_model):
-        parser.error(f'input model "{args.input_model}" is not a file')
     if args.input_checkpoint and not os.path.isfile(args.input_checkpoint):
-        parser.error(f'input checkpoint "{args.input_model}" is not a file')
+        parser.error(f'input checkpoint "{args.input_checkpoint}" is not a file')
     return args
 
 def predict(args):
@@ -45,18 +40,31 @@ def predict(args):
         batch = batch.unsqueeze(0)
 
     # build (and load) a model
+    checkpoint = torch.load(args.input_checkpoint)
+    args.n_hidden = checkpoint['model']['parameter']['n_hidden']
+    args.n_channel = checkpoint['model']['parameter']['n_channel']
+    args.embedding_dim = checkpoint['model']['parameter']['embedding_dim']
+    if args.bin_num != checkpoint['model']['parameter']['bin_num']:
+        bin_num = checkpoint['model']['parameter']['bin_num']
+        raise RuntimeError(
+            'the number of fft bin of input model and parameter are different '
+            f'--n-fft {(bin_num-1)*2} would work'
+        )
+    args.bin_num = checkpoint['model']['parameter']['bin_num']
+    args.residual = checkpoint['model']['parameter']['residual_base']
+    if args.n_channel != len(args.output_files):
+        raise RuntimeError(
+            'the number of channels of the input model '
+            'and the output files are different'
+        )
     model = ChimeraMagPhasebook(
         args.bin_num,
-        len(args.output_files),
+        args.n_channel,
         args.embedding_dim,
         N=args.n_hidden,
         residual_base=args.residual
     )
-    if args.input_checkpoint is not None:
-        checkpoint = torch.load(args.input_checkpoint)
-        model.load_state_dict(checkpoint['model_state_dict'])
-    elif args.input_model is not None:
-        model.load_state_dict(torch.load(args.input_model))
+    model.load_state_dict(checkpoint['model']['state_dict'])
 
     # predict and save
     shat = predict_waveform(model, batch, args.stft_setting)

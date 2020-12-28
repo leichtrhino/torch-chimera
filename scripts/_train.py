@@ -28,7 +28,6 @@ def add_training_io_argument(parser):
     parser.add_argument('--validation-dir', nargs='*', help="directory of validation dataset")
     parser.add_argument('--output-model', help='output model file')
     parser.add_argument('--output-checkpoint', help='output checkout file')
-    parser.add_argument('--input-model', help='input model file')
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
     parser.add_argument('--sync', action='store_true', help='the dataset is synchronized (e.g. music and singing voice separation)')
     parser.add_argument('--permutation-free', action='store_true', help='enable permutation-free loss function')
@@ -44,15 +43,10 @@ def validate_training_io_argument(args, parser):
     ):
         if not os.path.isdir(d):
             parser.error(f'"{d}" is not a directory')
-    if args.input_model and args.input_checkpoint:
-        parser.error('passing both --input-model and --input-checkpoint is prohibited')
-    if args.input_model and not os.path.isfile(args.input_model):
-        parser.error(f'input model "{args.input_model}" is not a file')
     if args.input_checkpoint and not os.path.isfile(args.input_checkpoint):
-        parser.error(f'input checkpoint "{args.input_model}" is not a file')
-    if not args.output_model and not args.output_checkpoint\
-       or args.output_model and args.output_checkpoint:
-        parser.error('either --output-model or --output-checkpoint must be provided')
+        parser.error(f'input checkpoint "{args.input_checkpoint}" is not a file')
+    if not args.output_checkpoint:
+        parser.error('--output-checkpoint must be provided')
     return args
 
 def add_training_argument(parser):
@@ -87,25 +81,55 @@ def train(args):
         )
 
     # build (and load) a model
-    model = ChimeraMagPhasebook(
-        args.bin_num,
-        len(args.train_dir),
-        args.embedding_dim,
-        N=args.n_hidden,
-        residual_base=args.residual
-    )
-    optimizer = torch.optim.Adam(model.parameters(), args.lr)
-    initial_epoch = 0
     if args.input_checkpoint is not None:
         checkpoint = torch.load(args.input_checkpoint)
-        initial_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['model_state_dict'])
+        args.n_hidden = checkpoint['model']['parameter']['n_hidden']
+        args.n_channel = checkpoint['model']['parameter']['n_channel']
+        args.embedding_dim = checkpoint['model']['parameter']['embedding_dim']
+        if args.bin_num != checkpoint['model']['parameter']['bin_num']:
+            bin_num = checkpoint['model']['parameter']['bin_num']
+            raise RuntimeError(
+                'the number of fft bin of input model and parameter are different '
+                f'--n-fft {(bin_num-1)*2} would work'
+            )
+        args.bin_num = checkpoint['model']['parameter']['bin_num']
+        args.residual = checkpoint['model']['parameter']['residual_base']
+        if args.n_channel != len(args.train_dir):
+            raise RuntimeError(
+                'the number of channels of the input model '
+                'and the dataset are different'
+            )
+        model = ChimeraMagPhasebook(
+            args.bin_num,
+            args.n_channel,
+            args.embedding_dim,
+            N=args.n_hidden,
+            residual_base=args.residual
+        )
+        model.load_state_dict(checkpoint['model']['state_dict'])
         model.to(args.device)
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    elif args.input_model is not None:
-        model.load_state_dict(torch.load(args.input_model))
-        model.to(args.device)
+        if args.loss_function is None\
+           or args.loss_function == checkpoint['optimizer']['type']:
+            # inherit parameters from checkpoint
+            args.loss_function = checkpoint['optimizer']['type']
+            args.lr = checkpoint['optimizer']['parameter']['lr']
+            optimizer = torch.optim.Adam(model.parameters(), args.lr)
+            optimizer.load_state_dict(checkpoint['optimizer']['state_dict'])
+            initial_epoch = checkpoint['optimizer']['epoch']
+        else:
+            # create new optimizer
+            optimizer = torch.optim.Adam(model.parameters(), args.lr)
+            initial_epoch = 0
     else:
+        model = ChimeraMagPhasebook(
+            args.bin_num,
+            len(args.train_dir),
+            args.embedding_dim,
+            N=args.n_hidden,
+            residual_base=args.residual
+        )
+        optimizer = torch.optim.Adam(model.parameters(), args.lr)
+        initial_epoch = 0
         model.to(args.device)
 
     # train and validation loop
@@ -169,9 +193,25 @@ def train(args):
     if args.output_checkpoint is not None:
         torch.save(
             {
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
+                'model': {
+                    'type': 'ChimeraMagPhasebook',
+                    'parameter': {
+                        'n_hidden': args.n_hidden,
+                        'n_channel': len(args.train_dir),
+                        'embedding_dim': args.embedding_dim,
+                        'bin_num': args.bin_num,
+                        'residual_base': args.residual,
+                    },
+                    'state_dict': model.state_dict(),
+                },
+                'optimizer': {
+                    'type': args.loss_function,
+                    'epoch': epoch,
+                    'parameter': {
+                        'lr': args.lr,
+                    },
+                    'state_dict': optimizer.state_dict(),
+                },
             },
             args.output_checkpoint
         )

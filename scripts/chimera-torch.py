@@ -43,21 +43,17 @@ def parse_args():
     predict_general_parser = predict_parser.add_argument_group('general')
     predict_io_parser = predict_parser.add_argument_group('io')
     predict_feature_parser = predict_parser.add_argument_group('feature')
-    predict_model_parser = predict_parser.add_argument_group('model')
     add_general_argument(predict_general_parser)
     add_prediction_io_argument(predict_io_parser)
     add_feature_argument(predict_feature_parser)
-    add_model_argument(predict_model_parser)
 
     evaluate_parser = subparser.add_parser('evaluate', help='<<evaluate help>>')
     evaluate_general_parser = evaluate_parser.add_argument_group('general')
     evaluate_io_parser = evaluate_parser.add_argument_group('io')
     evaluate_feature_parser = evaluate_parser.add_argument_group('feature')
-    evaluate_model_parser = evaluate_parser.add_argument_group('model')
     add_general_argument(evaluate_general_parser)
     add_evaluation_io_argument(evaluate_io_parser)
     add_feature_argument(evaluate_feature_parser)
-    add_model_argument(evaluate_model_parser)
 
     args = parser.parse_args()
     if args.command == 'train':
@@ -70,12 +66,10 @@ def parse_args():
         validate_general_argument(args, parser)
         validate_prediction_io_argument(args, parser)
         validate_feature_argument(args, parser)
-        validate_model_argument(args, parser)
     elif args.command == 'evaluate':
         validate_general_argument(args, parser)
         validate_evaluation_io_argument(args, parser)
         validate_feature_argument(args, parser)
-        validate_model_argument(args, parser)
     return args
 
 def main():
