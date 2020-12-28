@@ -18,7 +18,7 @@ except:
     sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     import torchchimera
 from torchchimera.datasets import FolderTuple
-from torchchimera.models import ChimeraMagPhasebook
+from torchchimera.models.chimera import ChimeraMagPhasebook
 from torchchimera.losses import permutation_free
 from torchchimera.losses import loss_mi_tpsa
 from torchchimera.losses import loss_dc_deep_lda
