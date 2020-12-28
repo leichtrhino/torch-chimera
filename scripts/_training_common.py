@@ -1,4 +1,7 @@
 
+import os
+import sys
+
 import torch
 import torchaudio
 
@@ -12,6 +15,19 @@ from torchchimera.losses import permutation_free
 from torchchimera.losses import loss_mi_tpsa
 from torchchimera.losses import loss_dc_deep_lda
 from torchchimera.losses import loss_wa
+
+class StftSetting(object):
+    def __init__(self, n_fft, hop_length=None, win_length=None, window=None):
+        self.n_fft = n_fft
+        if hop_length is None:
+            self.hop_length = n_fft // 4
+        else:
+            self.hop_length = hop_length
+        if win_length is None:
+            self.win_length = n_fft
+        else:
+            self.win_length = win_length
+        self.window = window
 
 class Stft(torch.nn.Module):
     def __init__(self, n_fft, hop_length=None, win_length=None, window=None):
@@ -85,14 +101,18 @@ def comp_mul(X, Y):
         X_re * Y_im + X_im * Y_re
     ), dim=-1)
 
-def make_x_in(batch, args):
-    window = torch.sqrt(torch.hann_window(args.n_fft, device=batch.device))
-    stft = Stft(args.n_fft, args.hop_length, args.win_length, window)
+def make_x_in(batch, stft_setting):
+    n_fft = stft_setting.n_fft
+    hop_length = stft_setting.hop_length
+    win_length = stft_setting.win_length
+
+    window = torch.sqrt(torch.hann_window(n_fft, device=batch.device))
+    stft = Stft(n_fft, hop_length, win_length, window)
     s, x = batch, batch.sum(dim=1)
     S, X = stft(s), stft(x)
     return s, x, S, X
 
-def forward(model, x_in, args):
+def forward(model, x_in):
     s, x, S, X = x_in
     embd, (mag, com), _ = model(
         torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
@@ -100,37 +120,47 @@ def forward(model, x_in, args):
     )
     return embd, (mag, com)
 
-def compute_loss(x_in, y_pred, args):
-    window = torch.sqrt(torch.hann_window(args.n_fft, device=x_in[0].device))
-    istft = Istft(args.n_fft, args.hop_length, args.win_length, window)
+def compute_loss(x_in, y_pred, stft_setting,
+                 loss_function='chimera++', permutation_free=False):
+    n_fft = stft_setting.n_fft
+    hop_length = stft_setting.hop_length
+    win_length = stft_setting.win_length
+
+    window = torch.sqrt(torch.hann_window(n_fft, device=x_in[0].device))
+    istft = Istft(n_fft, hop_length, win_length, window)
     s, x, S, X = x_in
     embd, (mag, com) = y_pred
-    if args.loss_function == 'chimera++':
+    if loss_function == 'chimera++':
         Y = dc_label_matrix(S)
         weight = dc_weight_matrix(X)
         alpha = 0.975
         loss_dc = alpha * loss_dc_deep_lda(embd, Y, weight)
-        if args.permutation_free:
+        if permutation_free:
             loss_mi = (1-alpha) * permutation_free(loss_mi_tpsa)(mag, X, S, gamma=2.)
         else:
             loss_mi = (1-alpha) * loss_mi_tpsa(mag, X, S, gamma=2.)
         loss = loss_dc + loss_mi
-    elif args.loss_function == 'wave-approximation':
+    elif loss_function == 'wave-approximation':
         Shat = comp_mul(com, X.unsqueeze(1))
         shat = istft(Shat)
         waveform_length = min(s.shape[-1], shat.shape[-1])
         s = s[:, :, :waveform_length]
         shat = shat[:, :, :waveform_length]
-        if args.permutation_free:
+        if permutation_free:
             loss = permutation_free(loss_wa)(shat, s)
         else:
             loss = loss_wa(shat, s)
+    else:
+        loss = None
     return loss
 
-def predict_waveform(model, mixture, args):
-    window = torch.sqrt(torch.hann_window(args.n_fft)).to(args.device)
-    stft = Stft(args.n_fft, args.hop_length, args.win_length, window)
-    istft = Istft(args.n_fft, args.hop_length, args.win_length, window)
+def predict_waveform(model, mixture, stft_setting):
+    n_fft = stft_setting.n_fft
+    hop_length = stft_setting.hop_length
+    win_length = stft_setting.win_length
+    window = torch.sqrt(torch.hann_window(n_fft)).to(mixture.device)
+    stft = Stft(n_fft, hop_length, win_length, window)
+    istft = Istft(n_fft, hop_length, win_length, window)
     X = stft(mixture)
     _, (com,), _ = model(
         torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),

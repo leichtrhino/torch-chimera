@@ -59,7 +59,7 @@ def predict(args):
         model.load_state_dict(torch.load(args.input_model))
 
     # predict and save
-    shat = predict_waveform(model, batch, args)
+    shat = predict_waveform(model, batch, args.stft_setting)
     if shat.dim() == 3:
         shat = shat.squeeze(0)
     for f, s in zip(args.output_files, shat):

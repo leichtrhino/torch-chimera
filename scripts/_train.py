@@ -124,9 +124,10 @@ def train(args):
                     / batch.abs().max(-1, keepdims=True)[0].clamp(min=1e-32)\
                     * 10**(-(0.9*torch.rand(*batch.shape[:-1], 1)+0.1)/10)
             batch = batch.to(args.device)
-            x_in = make_x_in(batch, args)
-            y_pred = forward(model, x_in, args)
-            loss = compute_loss(x_in, y_pred, args)
+            x_in = make_x_in(batch, args.stft_setting)
+            y_pred = forward(model, x_in)
+            loss = compute_loss(x_in, y_pred, args.stft_setting,
+                                args.loss_function, args.permutation_free)
             sum_loss += loss.item()
             total_batch += batch.shape[0]
             ave_loss = sum_loss / total_batch
@@ -150,9 +151,10 @@ def train(args):
                 total_batch = 0
                 for batch in validation_loader:
                     batch = batch.to(args.device)
-                    x_in = make_x_in(batch, args)
-                    y_pred = forward(model, x_in, args)
-                    loss = compute_loss(x_in, y_pred, args)
+                    x_in = make_x_in(batch, args.stft_setting)
+                    y_pred = forward(model, x_in)
+                    loss = compute_loss(x_in, y_pred, args.stft_setting,
+                                        args.loss_function, args.permutation_free)
                     sum_val_loss += loss.item()
                     total_batch += batch.shape[0]
             ave_val_loss = sum_val_loss / total_batch

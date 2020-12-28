@@ -1,5 +1,6 @@
 
 import torch
+from _training_common import StftSetting
 
 def add_general_argument(parser):
     parser.add_argument('--gpu', action='store_true', help='enable cuda device')
@@ -28,6 +29,7 @@ def validate_feature_argument(args, parser):
     args.win_length = args.n_fft
     args.hop_length = args.win_length // 4;
     args.bin_num = args.n_fft // 2 + 1
+    args.stft_setting = StftSetting(args.n_fft, args.hop_length, args.win_length)
     return args
 
 def add_model_argument(parser):
