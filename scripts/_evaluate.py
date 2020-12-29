@@ -14,7 +14,7 @@ from torchchimera.models.chimera import ChimeraMagPhasebook
 from torchchimera.metrics import eval_snr
 from torchchimera.metrics import eval_si_sdr
 
-from _training_common import predict_waveform
+from _training_common import AdaptedChimeraMagPhasebook
 from _training_common import exclude_silence
 
 def add_evaluation_io_argument(parser):
@@ -62,13 +62,14 @@ def evaluate(args):
             'the number of channels of the input model '
             'and the dataset are different'
         )
-    model = ChimeraMagPhasebook(
+    chimera = ChimeraMagPhasebook(
         args.bin_num,
         args.n_channel,
         args.embedding_dim,
         N=args.n_hidden,
         residual_base=args.residual
     )
+    model = AdaptedChimeraMagPhasebook(chimera, args.stft_setting)
     model.load_state_dict(checkpoint['model']['state_dict'])
     model.to(args.device)
     model.eval()
@@ -98,8 +99,7 @@ def evaluate(args):
                 if s is None:
                     continue
 
-            x = s.sum(dim=1)
-            shat = predict_waveform(model, x, args.stft_setting)
+            _, _, shat, _ = model(s.sum(dim=1))
             waveform_length = min(s.shape[-1], shat.shape[-1])
             s = s[:, :, :waveform_length]
             shat = shat[:, :, :waveform_length]

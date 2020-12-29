@@ -13,14 +13,8 @@ except:
     import torchchimera
 from torchchimera.datasets import FolderTuple
 from torchchimera.models.chimera import ChimeraMagPhasebook
-from torchchimera.losses import permutation_free
-from torchchimera.losses import loss_mi_tpsa
-from torchchimera.losses import loss_dc_deep_lda
-from torchchimera.losses import loss_wa
-from torchchimera.losses import loss_csa
 
-from _training_common import make_x_in
-from _training_common import forward
+from _training_common import AdaptedChimeraMagPhasebook
 from _training_common import compute_loss
 
 def add_training_io_argument(parser):
@@ -99,13 +93,14 @@ def train(args):
                 'the number of channels of the input model '
                 'and the dataset are different'
             )
-        model = ChimeraMagPhasebook(
+        chimera = ChimeraMagPhasebook(
             args.bin_num,
             args.n_channel,
             args.embedding_dim,
             N=args.n_hidden,
             residual_base=args.residual
         )
+        model = AdaptedChimeraMagPhasebook(chimera, args.stft_setting)
         model.load_state_dict(checkpoint['model']['state_dict'])
         model.to(args.device)
         if args.loss_function is None\
@@ -121,13 +116,14 @@ def train(args):
             optimizer = torch.optim.Adam(model.parameters(), args.lr)
             initial_epoch = 0
     else:
-        model = ChimeraMagPhasebook(
+        chimera = ChimeraMagPhasebook(
             args.bin_num,
             len(args.train_dir),
             args.embedding_dim,
             N=args.n_hidden,
             residual_base=args.residual
         )
+        model = AdaptedChimeraMagPhasebook(chimera, args.stft_setting)
         optimizer = torch.optim.Adam(model.parameters(), args.lr)
         initial_epoch = 0
         model.to(args.device)
@@ -148,9 +144,8 @@ def train(args):
                     / batch.abs().max(-1, keepdims=True)[0].clamp(min=1e-32)\
                     * 10**(-(0.9*torch.rand(*batch.shape[:-1], 1)+0.1)/10)
             batch = batch.to(args.device)
-            x_in = make_x_in(batch, args.stft_setting)
-            y_pred = forward(model, x_in)
-            loss = compute_loss(x_in, y_pred, args.stft_setting,
+            y_pred = model(batch.sum(dim=1))
+            loss = compute_loss(batch, y_pred, args.stft_setting,
                                 args.loss_function, args.permutation_free)
             sum_loss += loss.item()
             total_batch += batch.shape[0]
@@ -175,9 +170,8 @@ def train(args):
                 total_batch = 0
                 for batch in validation_loader:
                     batch = batch.to(args.device)
-                    x_in = make_x_in(batch, args.stft_setting)
-                    y_pred = forward(model, x_in)
-                    loss = compute_loss(x_in, y_pred, args.stft_setting,
+                    y_pred = model(batch.sum(dim=1))
+                    loss = compute_loss(batch, y_pred, args.stft_setting,
                                         args.loss_function, args.permutation_free)
                     sum_val_loss += loss.item()
                     total_batch += batch.shape[0]

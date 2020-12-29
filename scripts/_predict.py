@@ -14,7 +14,7 @@ except:
     import torchchimera
 from torchchimera.models.chimera import ChimeraMagPhasebook
 
-from _training_common import predict_waveform
+from _training_common import AdaptedChimeraMagPhasebook
 
 def add_prediction_io_argument(parser):
     parser.add_argument('--input-file', required=True, help='input wav file')
@@ -58,19 +58,20 @@ def predict(args):
             'the number of channels of the input model '
             'and the output files are different'
         )
-    model = ChimeraMagPhasebook(
+    chimera = ChimeraMagPhasebook(
         args.bin_num,
         args.n_channel,
         args.embedding_dim,
         N=args.n_hidden,
         residual_base=args.residual
     )
+    model = AdaptedChimeraMagPhasebook(chimera, args.stft_setting)
     model.load_state_dict(checkpoint['model']['state_dict'])
     model.to(args.device)
     model.eval()
 
     # predict and save
-    shat = predict_waveform(model, batch, args.stft_setting)
+    _, _, shat, _ = model(batch)
     if shat.dim() == 3:
         shat = shat.squeeze(0)
     for f, s in zip(args.output_files, shat):

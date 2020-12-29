@@ -30,54 +30,62 @@ class StftSetting(object):
         self.window = window
 
 class Stft(torch.nn.Module):
-    def __init__(self, n_fft, hop_length=None, win_length=None, window=None):
+    def __init__(self, stft_setting):
         super(Stft, self).__init__()
-        self.n_fft = n_fft
-        if hop_length is None:
-            self.hop_length = n_fft // 4
-        else:
-            self.hop_length = hop_length
-        if win_length is None:
-            self.win_length = n_fft
-        else:
-            self.win_length = win_length
-        self.window = window
+        self.stft_setting = stft_setting
+
     def forward(self, x):
         waveform_length = x.shape[-1]
         y = torch.stft(
             x.reshape(x.shape[:-1].numel(), waveform_length),
-            self.n_fft,
-            self.hop_length,
-            self.win_length,
-            window=self.window
+            self.stft_setting.n_fft,
+            self.stft_setting.hop_length,
+            self.stft_setting.win_length,
+            window=self.stft_setting.window
         )
         _, freq, time, _ = y.shape
         return y.reshape(*x.shape[:-1], freq, time, 2)
 
 class Istft(torch.nn.Module):
-    def __init__(self, n_fft, hop_length=None, win_length=None, window=None):
+    def __init__(self, stft_setting):
         super(Istft, self).__init__()
-        self.n_fft = n_fft
-        if hop_length is None:
-            self.hop_length = n_fft // 4
-        else:
-            self.hop_length = hop_length
-        if win_length is None:
-            self.win_length = n_fft
-        else:
-            self.win_length = win_length
-        self.window = window
+        self.stft_setting = stft_setting
+
     def forward(self, x):
         freq, time = x.shape[-3], x.shape[-2]
         y = torchaudio.functional.istft(
             x.reshape(x.shape[:-3].numel(), freq, time, 2),
-            self.n_fft,
-            self.hop_length,
-            self.win_length,
-            window=self.window
+            self.stft_setting.n_fft,
+            self.stft_setting.hop_length,
+            self.stft_setting.win_length,
+            window=self.stft_setting.window
         )
         waveform_length = y.shape[-1]
         return y.reshape(*x.shape[:-3], waveform_length)
+
+class AdaptedChimeraMagPhasebook(torch.nn.Module):
+    def __init__(self, chimera, stft_setting):
+        super(AdaptedChimeraMagPhasebook, self).__init__()
+        self.chimera = chimera
+        self.stft_setting = stft_setting
+
+    def forward(self, x, states=None):
+        def comp_mul(X, Y):
+            (X_re, X_im), (Y_re, Y_im) = X.unbind(-1), Y.unbind(-1)
+            return torch.stack((
+                X_re * Y_re - X_im * Y_im,
+                X_re * Y_im + X_im * Y_re
+            ), dim=-1)
+        stft = Stft(self.stft_setting)
+        istft = Istft(self.stft_setting)
+
+        X = stft(x)
+        embd, (mag, com), out_status = self.chimera(
+            torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
+            states=states, outputs=['mag', 'com']
+        )
+        shat = istft(comp_mul(com, X.unsqueeze(1)))
+        return embd, mag, shat, out_status
 
 def dc_label_matrix(S):
     batch_size, n_channels, freq_bins, spec_time, _ = S.shape
@@ -94,42 +102,13 @@ def dc_weight_matrix(X):
         / X_abs.sum(dim=(1, 2)).clamp(min=1e-16).unsqueeze(-1)
     return weight
 
-def comp_mul(X, Y):
-    (X_re, X_im), (Y_re, Y_im) = X.unbind(-1), Y.unbind(-1)
-    return torch.stack((
-        X_re * Y_re - X_im * Y_im,
-        X_re * Y_im + X_im * Y_re
-    ), dim=-1)
-
-def make_x_in(batch, stft_setting):
-    n_fft = stft_setting.n_fft
-    hop_length = stft_setting.hop_length
-    win_length = stft_setting.win_length
-
-    window = torch.sqrt(torch.hann_window(n_fft, device=batch.device))
-    stft = Stft(n_fft, hop_length, win_length, window)
-    s, x = batch, batch.sum(dim=1)
-    S, X = stft(s), stft(x)
-    return s, x, S, X
-
-def forward(model, x_in):
-    s, x, S, X = x_in
-    embd, (mag, com), _ = model(
-        torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
-        outputs=['mag', 'com']
-    )
-    return embd, (mag, com)
-
-def compute_loss(x_in, y_pred, stft_setting,
+def compute_loss(s, y_pred, stft_setting,
                  loss_function='chimera++', permutation_free=False):
-    n_fft = stft_setting.n_fft
-    hop_length = stft_setting.hop_length
-    win_length = stft_setting.win_length
+    stft = Stft(stft_setting)
+    x = s.sum(dim=1)
+    S, X = stft(s), stft(x)
 
-    window = torch.sqrt(torch.hann_window(n_fft, device=x_in[0].device))
-    istft = Istft(n_fft, hop_length, win_length, window)
-    s, x, S, X = x_in
-    embd, (mag, com) = y_pred
+    embd, mag, shat, _ = y_pred
     if loss_function == 'chimera++':
         Y = dc_label_matrix(S)
         weight = dc_weight_matrix(X)
@@ -141,8 +120,6 @@ def compute_loss(x_in, y_pred, stft_setting,
             loss_mi = (1-alpha) * loss_mi_tpsa(mag, X, S, gamma=2.)
         loss = loss_dc + loss_mi
     elif loss_function == 'wave-approximation':
-        Shat = comp_mul(com, X.unsqueeze(1))
-        shat = istft(Shat)
         waveform_length = min(s.shape[-1], shat.shape[-1])
         s = s[:, :, :waveform_length]
         shat = shat[:, :, :waveform_length]
@@ -154,28 +131,9 @@ def compute_loss(x_in, y_pred, stft_setting,
         loss = None
     return loss
 
-def predict_waveform(model, mixture, stft_setting):
-    n_fft = stft_setting.n_fft
-    hop_length = stft_setting.hop_length
-    win_length = stft_setting.win_length
-    window = torch.sqrt(torch.hann_window(n_fft)).to(mixture.device)
-    stft = Stft(n_fft, hop_length, win_length, window)
-    istft = Istft(n_fft, hop_length, win_length, window)
-    X = stft(mixture)
-    _, (com,), _ = model(
-        torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
-        outputs=['com']
-    )
-    Shat = comp_mul(com, X.unsqueeze(1))
-    return istft(Shat)
-
 def exclude_silence(s, stft_setting, cutoff_rms):
-    n_fft = stft_setting.n_fft
-    hop_length = stft_setting.hop_length
-    win_length = stft_setting.win_length
-
     window = torch.sqrt(torch.hann_window(n_fft)).to(s.device)
-    stft = Stft(n_fft, hop_length, win_length, window)
+    stft = Stft(stft_setting)
     S = stft(s.squeeze(0))
     S_pow = torch.sum(stft(s.squeeze(0))**2, dim=-1)
     rms = 10 * torch.log10(torch.mean(S_pow, dim=1))
@@ -183,6 +141,6 @@ def exclude_silence(s, stft_setting, cutoff_rms):
     S = S[:, :, is_no_silence, :]
     if S.shape[2] < 4: # 4: n_fft // hop_length
         return None
-    istft = Istft(n_fft, hop_length, win_length, window)
+    istft = Istft(stft_setting)
     s = istft(S).unsqueeze(0)
     return s
