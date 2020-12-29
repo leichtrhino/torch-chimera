@@ -12,8 +12,8 @@ except:
     # attempts to import local module
     sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     import torchchimera
-from torchchimera.models.chimera import ChimeraMagPhasebook
 
+from _model_io import load_model
 from _training_common import AdaptedChimeraMagPhasebook
 
 def add_prediction_io_argument(parser):
@@ -40,33 +40,22 @@ def predict(args):
         batch = batch.unsqueeze(0)
     batch = batch.to(args.device)
 
-    # build (and load) a model
-    checkpoint = torch.load(args.input_checkpoint)
-    args.n_hidden = checkpoint['model']['parameter']['n_hidden']
-    args.n_channel = checkpoint['model']['parameter']['n_channel']
-    args.embedding_dim = checkpoint['model']['parameter']['embedding_dim']
-    if args.bin_num != checkpoint['model']['parameter']['bin_num']:
+    # load a model
+    model, update_args = load_model(
+        args.input_checkpoint, 'ChimeraMagPhasebook',
+        stft_setting=args.stft_setting
+    )
+    if args.bin_num != update_args['bin_num']:
         bin_num = checkpoint['model']['parameter']['bin_num']
         raise RuntimeError(
             'the number of fft bin of input model and parameter are different '
             f'--n-fft {(bin_num-1)*2} would work'
         )
-    args.bin_num = checkpoint['model']['parameter']['bin_num']
-    args.residual = checkpoint['model']['parameter']['residual_base']
-    if args.n_channel != len(args.output_files):
+    if len(args.output_files) != update_args['n_channel']:
         raise RuntimeError(
             'the number of channels of the input model '
             'and the output files are different'
         )
-    chimera = ChimeraMagPhasebook(
-        args.bin_num,
-        args.n_channel,
-        args.embedding_dim,
-        N=args.n_hidden,
-        residual_base=args.residual
-    )
-    model = AdaptedChimeraMagPhasebook(chimera, args.stft_setting)
-    model.load_state_dict(checkpoint['model']['state_dict'])
     model.to(args.device)
     model.eval()
 

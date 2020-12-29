@@ -12,8 +12,12 @@ except:
     sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     import torchchimera
 from torchchimera.datasets import FolderTuple
-from torchchimera.models.chimera import ChimeraMagPhasebook
 
+from _model_io import build_model
+from _model_io import build_optimizer
+from _model_io import load_model
+from _model_io import load_optimizer
+from _model_io import save_checkpoint
 from _training_common import AdaptedChimeraMagPhasebook
 from _training_common import compute_loss
 
@@ -75,58 +79,53 @@ def train(args):
         )
 
     # build (and load) a model
-    if args.input_checkpoint is not None:
-        checkpoint = torch.load(args.input_checkpoint)
-        args.n_hidden = checkpoint['model']['parameter']['n_hidden']
-        args.n_channel = checkpoint['model']['parameter']['n_channel']
-        args.embedding_dim = checkpoint['model']['parameter']['embedding_dim']
-        if args.bin_num != checkpoint['model']['parameter']['bin_num']:
-            bin_num = checkpoint['model']['parameter']['bin_num']
+    if args.input_checkpoint is None:
+        args.n_channel = len(args.train_dir)
+        model = build_model(
+            'ChimeraMagPhasebook',
+            bin_num=args.bin_num,
+            n_channel=args.n_channel,
+            embedding_dim=args.embedding_dim,
+            n_hidden=args.n_hidden,
+            residual=args.residual,
+            stft_setting=args.stft_setting,
+        )
+        model.to(args.device)
+        optimizer = build_optimizer(model, lr=args.lr)
+        initial_epoch = 0
+    else:
+        # load model from file
+        model, update_args = load_model(
+            args.input_checkpoint,
+            'ChimeraMagPhasebook',
+            stft_setting=args.stft_setting
+        )
+        if args.bin_num != update_args['bin_num']:
+            bin_num = update_args['bin_num']
             raise RuntimeError(
                 'the number of fft bin of input model and parameter are different '
                 f'--n-fft {(bin_num-1)*2} would work'
             )
-        args.bin_num = checkpoint['model']['parameter']['bin_num']
-        args.residual = checkpoint['model']['parameter']['residual_base']
-        if args.n_channel != len(args.train_dir):
+        if len(args.train_dir) != update_args['n_channel']:
             raise RuntimeError(
                 'the number of channels of the input model '
                 'and the dataset are different'
             )
-        chimera = ChimeraMagPhasebook(
-            args.bin_num,
-            args.n_channel,
-            args.embedding_dim,
-            N=args.n_hidden,
-            residual_base=args.residual
-        )
-        model = AdaptedChimeraMagPhasebook(chimera, args.stft_setting)
-        model.load_state_dict(checkpoint['model']['state_dict'])
+        for k, v in update_args.items():
+            vars(args)[k] = v
         model.to(args.device)
-        if args.loss_function is None\
-           or args.loss_function == checkpoint['optimizer']['type']:
-            # inherit parameters from checkpoint
-            args.loss_function = checkpoint['optimizer']['type']
-            args.lr = checkpoint['optimizer']['parameter']['lr']
-            optimizer = torch.optim.Adam(model.parameters(), args.lr)
-            optimizer.load_state_dict(checkpoint['optimizer']['state_dict'])
-            initial_epoch = checkpoint['optimizer']['epoch']
+
+        # load optimizer from file
+        optimizer, initial_epoch, update_args = load_optimizer(
+            args.input_checkpoint, model)
+        if args.loss_function is None or\
+           args.loss_function == update_args['loss_function']:
+            for k, v in update_args.items():
+                vars(args)[k] = v
         else:
-            # create new optimizer
-            optimizer = torch.optim.Adam(model.parameters(), args.lr)
+            # build optimizer from scratch
+            optimizer = build_optimizer(model, lr=args.lr)
             initial_epoch = 0
-    else:
-        chimera = ChimeraMagPhasebook(
-            args.bin_num,
-            len(args.train_dir),
-            args.embedding_dim,
-            N=args.n_hidden,
-            residual_base=args.residual
-        )
-        model = AdaptedChimeraMagPhasebook(chimera, args.stft_setting)
-        optimizer = torch.optim.Adam(model.parameters(), args.lr)
-        initial_epoch = 0
-        model.to(args.device)
 
     # train and validation loop
     epoch = initial_epoch
@@ -182,31 +181,7 @@ def train(args):
 
     # save
     model.eval()
-    if args.output_model is not None:
-        torch.save(model.state_dict(), args.output_model)
     if args.output_checkpoint is not None:
-        torch.save(
-            {
-                'model': {
-                    'type': 'ChimeraMagPhasebook',
-                    'parameter': {
-                        'n_hidden': args.n_hidden,
-                        'n_channel': len(args.train_dir),
-                        'embedding_dim': args.embedding_dim,
-                        'bin_num': args.bin_num,
-                        'residual_base': args.residual,
-                    },
-                    'state_dict': model.state_dict(),
-                },
-                'optimizer': {
-                    'type': args.loss_function,
-                    'epoch': epoch,
-                    'parameter': {
-                        'lr': args.lr,
-                    },
-                    'state_dict': optimizer.state_dict(),
-                },
-            },
-            args.output_checkpoint
-        )
-
+        del vars(args)['epoch']
+        save_checkpoint(
+            model, optimizer, args.output_checkpoint, epoch=epoch, **vars(args))
