@@ -41,6 +41,8 @@ def validate_training_io_argument(args, parser):
     ):
         if not os.path.isdir(d):
             parser.error(f'"{d}" is not a directory')
+    if args.model_type is None and args.input_checkpoint is None:
+        parser.error('--model-type is required when --input-checkpoint is not provided')
     if args.input_checkpoint and not os.path.isfile(args.input_checkpoint):
         parser.error(f'input checkpoint "{args.input_checkpoint}" is not a file')
     if not args.output_checkpoint:
@@ -82,12 +84,13 @@ def train(args):
     if args.input_checkpoint is None:
         args.n_channel = len(args.train_dir)
         model = build_model(
-            'ChimeraMagPhasebook',
+            args.model_type,
             bin_num=args.bin_num,
             n_channel=args.n_channel,
             embedding_dim=args.embedding_dim,
             n_hidden=args.n_hidden,
             residual=args.residual,
+            n_misi_layer=args.n_misi_layer,
             stft_setting=args.stft_setting,
         )
         model.to(args.device)
@@ -97,7 +100,8 @@ def train(args):
         # load model from file
         model, update_args = load_model(
             args.input_checkpoint,
-            'ChimeraMagPhasebook',
+            args.model_type,
+            n_misi_layer=args.n_misi_layer,
             stft_setting=args.stft_setting
         )
         if args.bin_num != update_args['bin_num']:
@@ -116,13 +120,16 @@ def train(args):
         model.to(args.device)
 
         # load optimizer from file
-        optimizer, initial_epoch, update_args = load_optimizer(
-            args.input_checkpoint, model)
-        if args.loss_function is None or\
-           args.loss_function == update_args['loss_function']:
-            for k, v in update_args.items():
-                vars(args)[k] = v
-        else:
+        try:
+            optimizer, initial_epoch, update_args = load_optimizer(
+                args.input_checkpoint, model)
+            if args.loss_function is None or\
+               args.loss_function == update_args['loss_function']:
+                for k, v in update_args.items():
+                    vars(args)[k] = v
+            else:
+                raise RuntimeError()
+        except:
             # build optimizer from scratch
             optimizer = build_optimizer(model, lr=args.lr)
             initial_epoch = 0

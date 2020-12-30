@@ -1,6 +1,7 @@
 
 import os
 import sys
+import math
 
 import torch
 import torchaudio
@@ -85,6 +86,22 @@ class AdaptedChimeraMagPhasebook(torch.nn.Module):
             states=states, outputs=['mag', 'com']
         )
         shat = istft(comp_mul(com, X.unsqueeze(1)))
+        return embd, mag, shat, out_status
+
+class AdaptedChimeraMagPhasebookWithMisi(torch.nn.Module):
+    def __init__(self, chimera, misi, stft_setting):
+        super(AdaptedChimeraMagPhasebookWithMisi, self).__init__()
+        self.chimera = chimera
+        self.misi = misi
+        self.stft_setting = stft_setting
+
+    def forward(self, x, states=None):
+        X = Stft(self.stft_setting)(x)
+        embd, (mag, com), out_status = self.chimera(
+            torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
+            states=states, outputs=['mag', 'com']
+        )
+        shat = self.misi(com, x)
         return embd, mag, shat, out_status
 
 def dc_label_matrix(S):
