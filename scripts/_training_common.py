@@ -149,7 +149,6 @@ def compute_loss(s, y_pred, stft_setting,
     return loss
 
 def exclude_silence(s, stft_setting, cutoff_rms):
-    window = torch.sqrt(torch.hann_window(n_fft)).to(s.device)
     stft = Stft(stft_setting)
     S = stft(s.squeeze(0))
     S_pow = torch.sum(stft(s.squeeze(0))**2, dim=-1)
