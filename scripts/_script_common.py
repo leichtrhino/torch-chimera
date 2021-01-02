@@ -33,9 +33,10 @@ def validate_feature_argument(args, parser):
     window = torch.sqrt(torch.hann_window(args.n_fft, device=args.device))
     args.stft_setting = StftSetting(
         args.n_fft, args.hop_length, args.win_length, window)
-    args.segment_duration = math.ceil(
-        args.segment_duration * args.sr / args.hop_length
-    ) * args.hop_length / args.sr
+    if args.segment_duration is not None:
+        args.segment_duration = math.ceil(
+            args.segment_duration * args.sr / args.hop_length
+        ) * args.hop_length / args.sr
     return args
 
 def add_model_argument(parser):
