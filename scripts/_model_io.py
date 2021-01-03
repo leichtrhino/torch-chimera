@@ -103,7 +103,7 @@ def load_model(checkpoint_path, model_type, **kwargs):
         'embedding_dim': checkpoint['model']['parameter']['embedding_dim'],
         'n_hidden': checkpoint['model']['parameter']['n_hidden'],
         'residual': checkpoint['model']['parameter']['residual_base'],
-        'n_misi_layer': kwargs['n_misi_layer'] \
+        'n_misi_layer': kwargs.get('n_misi_layer', None) \
         if 'n_misi_layer' not in checkpoint['model']['parameter'] \
         or not checkpoint['model']['parameter']['n_misi_layer'] \
         else checkpoint['model']['parameter']['n_misi_layer'],
