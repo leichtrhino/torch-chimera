@@ -21,6 +21,7 @@ def build_model(model_type, **kwargs):
         kwargs['n_channel'],
         kwargs['embedding_dim'],
         N=kwargs['n_hidden'],
+        num_layers=kwargs['n_lstm_layer'],
         residual_base=kwargs['residual']
     )
     if model_type == 'ChimeraMagPhasebook':
@@ -47,6 +48,7 @@ def load_model(checkpoint_path, model_type, **kwargs):
         checkpoint['model']['parameter']['n_channel'],
         checkpoint['model']['parameter']['embedding_dim'],
         N=checkpoint['model']['parameter']['n_hidden'],
+        num_layers=checkpoint['model']['parameter']['n_lstm_layer'],
         residual_base=checkpoint['model']['parameter']['residual_base'],
     )
     if (model_type == None or model_type == 'ChimeraMagPhasebook') and\
@@ -102,6 +104,7 @@ def load_model(checkpoint_path, model_type, **kwargs):
         'n_channel': checkpoint['model']['parameter']['n_channel'],
         'embedding_dim': checkpoint['model']['parameter']['embedding_dim'],
         'n_hidden': checkpoint['model']['parameter']['n_hidden'],
+        'n_lstm_layer': checkpoint['model']['parameter']['n_lstm_layer'],
         'residual': checkpoint['model']['parameter']['residual_base'],
         'n_misi_layer': kwargs.get('n_misi_layer', None) \
         if 'n_misi_layer' not in checkpoint['model']['parameter'] \
@@ -140,6 +143,7 @@ def save_checkpoint(model, optimizer, checkpoint_path, **kwargs):
                     'embedding_dim': kwargs['embedding_dim'],
                     'bin_num': kwargs['bin_num'],
                     'residual_base': kwargs['residual'],
+                    'n_lstm_layer': kwargs['n_lstm_layer'],
                     'n_misi_layer': kwargs['n_misi_layer']
                     if type(model) == AdaptedChimeraMagPhasebookWithMisi
                     else None,

@@ -90,6 +90,7 @@ def train(args):
             embedding_dim=args.embedding_dim,
             n_hidden=args.n_hidden,
             residual=args.residual,
+            n_lstm_layer=args.n_lstm_layer,
             n_misi_layer=args.n_misi_layer,
             stft_setting=args.stft_setting,
         )

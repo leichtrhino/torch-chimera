@@ -41,6 +41,7 @@ def validate_feature_argument(args, parser):
 
 def add_model_argument(parser):
     parser.add_argument('--model-type', default=None, choices=('ChimeraMagPhasebook', 'ChimeraMagPhasebookWithMisi'), help='model type')
+    parser.add_argument('--n-lstm-layer', type=int, default=4, help='num of BLSTM layers')
     parser.add_argument('--n-hidden', type=int, default=600, help='num of hidden state')
     parser.add_argument('--embedding-dim', type=int, default=20, help='embedding dimension of deep clustering')
     parser.add_argument('--residual', action='store_true', help='residual base module')
@@ -48,6 +49,8 @@ def add_model_argument(parser):
     return parser
 
 def validate_model_argument(args, parser):
+    if args.n_lstm_layer <= 0:
+        parser.error('--n-lstm-layer is positive')
     if args.n_hidden <= 0:
         parser.error('--n-hidden is positive')
     if args.embedding_dim <= 0:
