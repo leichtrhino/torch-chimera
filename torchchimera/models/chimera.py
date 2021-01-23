@@ -74,7 +74,10 @@ class ResidualChimeraBase(torch.nn.Module):
         if initial_states is None:
             batch_size = x.shape[0]
             shape = (self.num_layers*2, x.shape[0], self.hidden_size)
-            initial_states = (torch.zeros(*shape), torch.zeros(*shape))
+            initial_states = (
+                torch.zeros(*shape, device=x.device),
+                torch.zeros(*shape, device=x.device)
+            )
         h_0, c_0 = initial_states
         h_n_list, c_n_list = [], []
         x = x.transpose(1, 2) # B, T, F
