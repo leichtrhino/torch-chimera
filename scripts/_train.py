@@ -147,9 +147,18 @@ def train(args):
         model.train()
         for step, batch in enumerate(train_loader, 1):
             if not args.sync:
-                batch = batch\
-                    / batch.abs().max(-1, keepdims=True)[0].clamp(min=1e-32)\
-                    * 10**(-(0.9*torch.rand(*batch.shape[:-1], 1)+0.1)/10)
+                scale = 10 ** (torch.rand(*batch.shape[:-1]) * -10 / 10)
+                scale = torch.sqrt(
+                    batch.shape[-1] * scale**2 /
+                    torch.sum(batch**2, dim=-1).clamp(min=1e-32)
+                )
+                scale_mix = 1. / torch.max(
+                    torch.sum(scale.unsqueeze(-1) * batch, dim=1).abs(), dim=-1
+                )[0]
+                scale_mix = torch.min(scale_mix, torch.ones_like(scale_mix))
+                scale *= scale_mix.unsqueeze(-1)
+                batch *= scale.unsqueeze(-1) * 0.98
+
             batch = batch.to(args.device)
             y_pred = model(batch.sum(dim=1))
             loss = compute_loss(batch, y_pred, args.stft_setting,
