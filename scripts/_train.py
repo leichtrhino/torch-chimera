@@ -178,13 +178,23 @@ def train(args):
             last_output_len = len(curr_output)
 
         if args.validation_dir is not None:
-            if not args.sync:
-                validation_dataset.shuffle()
             model.eval()
             with torch.no_grad():
                 sum_val_loss = 0
                 total_batch = 0
                 for batch in validation_loader:
+                    scale = torch.sqrt(
+                        batch.shape[-1] /
+                        torch.sum(batch**2, dim=-1).clamp(min=1e-32)
+                    )
+                    scale_mix = 1. / torch.max(
+                        torch.sum(scale.unsqueeze(-1) * batch, dim=1).abs(),
+                        dim=-1
+                    )[0]
+                    scale_mix = torch.min(scale_mix, torch.ones_like(scale_mix))
+                    scale *= scale_mix.unsqueeze(-1)
+                    batch *= scale.unsqueeze(-1) * 0.98
+
                     batch = batch.to(args.device)
                     y_pred = model(batch.sum(dim=1))
                     loss = compute_loss(batch, y_pred, args.stft_setting,
