@@ -115,16 +115,16 @@ def load_model(checkpoint_path, model_type, **kwargs):
 
 def load_optimizer(checkpoint_path, model, **kwargs):
     checkpoint = torch.load(checkpoint_path)
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        checkpoint['optimizer']['parameter']['lr']
-    )
+    lr = kwargs.get('lr', checkpoint['optimizer']['parameter']['lr'])
+    optimizer = torch.optim.Adam(model.parameters(), lr)
     optimizer.load_state_dict(checkpoint['optimizer']['state_dict'])
+    for group in optimizer.param_groups:
+        group['lr'] = lr
 
     initial_epoch = checkpoint['optimizer']['epoch']
     update_args = {
         'loss_function': checkpoint['optimizer']['type'],
-        'lr': checkpoint['optimizer']['parameter']['lr']
+        'lr': lr
     }
     return optimizer, initial_epoch, update_args
 
