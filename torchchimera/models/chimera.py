@@ -42,13 +42,9 @@ class ChimeraBase(torch.nn.Module):
 
     def forward(self, x, initial_states=None):
         if initial_states is None:
-            batch_size = x.shape[0]
-            shape = (self.num_layers*2, x.shape[0], self.hidden_size)
-            initial_states = (
-                torch.zeros(*shape, device=x.device),
-                torch.zeros(*shape, device=x.device)
-            )
-        return self.blstm_layer(x.transpose(1, 2), initial_states) # (B, T, 2*N)
+            return self.blstm_layer(x.transpose(1, 2)) # (B, T, 2*N)
+        else:
+            return self.blstm_layer(x.transpose(1, 2), initial_states) # (B, T, 2*N)
 
 class ResidualChimeraBase(torch.nn.Module):
     def __init__(self, n_freq_bins, n_hidden_states, num_layers=4, dropout=0.3):
@@ -71,20 +67,16 @@ class ResidualChimeraBase(torch.nn.Module):
             if n_freq_bins != n_hidden_states*2 else torch.nn.Identity()
 
     def forward(self, x, initial_states=None):
-        if initial_states is None:
-            batch_size = x.shape[0]
-            shape = (self.num_layers*2, x.shape[0], self.hidden_size)
-            initial_states = (
-                torch.zeros(*shape, device=x.device),
-                torch.zeros(*shape, device=x.device)
-            )
-        h_0, c_0 = initial_states
         h_n_list, c_n_list = [], []
         x = x.transpose(1, 2) # B, T, F
         for i in range(self.num_layers):
-            out_lstm, (h_n, c_n) = self.blstm_layers[i](
-                x, (h_0[i*2:(i+1)*2], c_0[i*2:(i+1)*2])
-            )
+            if initial_states is None:
+                out_lstm, (h_n, c_n) = self.blstm_layers[i](x)
+            else:
+                h_0, c_0 = initial_states
+                out_lstm, (h_n, c_n) = self.blstm_layers[i](
+                    x, (h_0[i*2:(i+1)*2], c_0[i*2:(i+1)*2])
+                )
             if i < self.num_layers - 1:
                 out_lstm = self.dropout_layer(out_lstm)
                 x = (self.linear(x) if i == 0 else x) + out_lstm
