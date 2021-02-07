@@ -29,10 +29,10 @@ def _initialize_lstm_weights(lstm_layer, hidden_size):
 # input: (batch_size, freq_bins, time)
 # output: (batch_size, time, 2*n_hidden_states)
 class ChimeraBase(torch.nn.Module):
-    def __init__(self, n_freq_bins, n_hidden_states, dropout=0.3):
+    def __init__(self, n_freq_bins, n_hidden_states, num_layers=4, dropout=0.3):
         super(ChimeraBase, self).__init__()
         self.hidden_size = n_hidden_states
-        self.num_layers = 4
+        self.num_layers = num_layers
         self.blstm_layer = torch.nn.LSTM(
             n_freq_bins, n_hidden_states, self.num_layers,
             batch_first=True, bidirectional=True,
@@ -42,19 +42,15 @@ class ChimeraBase(torch.nn.Module):
 
     def forward(self, x, initial_states=None):
         if initial_states is None:
-            batch_size = x.shape[0]
-            shape = (self.num_layers*2, x.shape[0], self.hidden_size)
-            initial_states = (
-                torch.zeros(*shape, device=x.device),
-                torch.zeros(*shape, device=x.device)
-            )
-        return self.blstm_layer(x.transpose(1, 2), initial_states) # (B, T, 2*N)
+            return self.blstm_layer(x.transpose(1, 2)) # (B, T, 2*N)
+        else:
+            return self.blstm_layer(x.transpose(1, 2), initial_states) # (B, T, 2*N)
 
 class ResidualChimeraBase(torch.nn.Module):
-    def __init__(self, n_freq_bins, n_hidden_states, dropout=0.3):
+    def __init__(self, n_freq_bins, n_hidden_states, num_layers=4, dropout=0.3):
         super(ResidualChimeraBase, self).__init__()
         self.hidden_size = n_hidden_states
-        self.num_layers = 4
+        self.num_layers = num_layers
         self.blstm_layers = torch.nn.ModuleList([
             torch.nn.LSTM(
                 n_freq_bins if i == 1 else n_hidden_states*2,
@@ -71,17 +67,16 @@ class ResidualChimeraBase(torch.nn.Module):
             if n_freq_bins != n_hidden_states*2 else torch.nn.Identity()
 
     def forward(self, x, initial_states=None):
-        if initial_states is None:
-            batch_size = x.shape[0]
-            shape = (self.num_layers*2, x.shape[0], self.hidden_size)
-            initial_states = (torch.zeros(*shape), torch.zeros(*shape))
-        h_0, c_0 = initial_states
         h_n_list, c_n_list = [], []
         x = x.transpose(1, 2) # B, T, F
         for i in range(self.num_layers):
-            out_lstm, (h_n, c_n) = self.blstm_layers[i](
-                x, (h_0[i*2:(i+1)*2], c_0[i*2:(i+1)*2])
-            )
+            if initial_states is None:
+                out_lstm, (h_n, c_n) = self.blstm_layers[i](x)
+            else:
+                h_0, c_0 = initial_states
+                out_lstm, (h_n, c_n) = self.blstm_layers[i](
+                    x, (h_0[i*2:(i+1)*2], c_0[i*2:(i+1)*2])
+                )
             if i < self.num_layers - 1:
                 out_lstm = self.dropout_layer(out_lstm)
                 x = (self.linear(x) if i == 0 else x) + out_lstm
@@ -162,13 +157,13 @@ class TrainableCodebookMaskHead(torch.nn.Module):
         return self.codebook_layer(x).squeeze(-1)
 
 class ChimeraClassic(torch.nn.Module):
-    def __init__(self, F, T, C, D, N=400):
+    def __init__(self, F, T, C, D, N=400, num_layers=4):
         super(ChimeraClassic, self).__init__()
         self.freq_bins = F
         self.time = T
         self.n_channels = C
         self.embed_dims = D
-        self.base = ChimeraBase(F, N)
+        self.base = ChimeraBase(F, N, num_layers=num_layers)
         self.embed_head = EmbeddingHead(2*N, F, D)
         self.mask_head = BaseMaskHead(
             F*D, F, C, 1, torch.nn.Softmax(dim=2)
@@ -183,9 +178,9 @@ class ChimeraClassic(torch.nn.Module):
         return out_embd, out_mask, out_states
 
 class ChimeraPlusPlus(torch.nn.Module):
-    def __init__(self, F, C, D, N=400):
+    def __init__(self, F, C, D, N=400, num_layers=4):
         super(ChimeraPlusPlus, self).__init__()
-        self.base = ChimeraBase(F, N)
+        self.base = ChimeraBase(F, N, num_layers=num_layers)
         self.embed_head = EmbeddingHead(2*N, F, D)
         self.mask_head_base = BaseMaskHead(
             2*N, F, C, 3, torch.nn.Softmax(dim=-1)
@@ -198,13 +193,14 @@ class ChimeraPlusPlus(torch.nn.Module):
             out_states
 
 class ChimeraMagPhasebook(torch.nn.Module):
-    def __init__(self, F, C, D, N=400, embed_activation=torch.nn.Sigmoid(),
+    def __init__(self, F, C, D, N=400, num_layers=4,
+                 embed_activation=torch.nn.Sigmoid(),
                  residual_base=False):
         super(ChimeraMagPhasebook, self).__init__()
         if residual_base:
-            self.base = ResidualChimeraBase(F, N)
+            self.base = ResidualChimeraBase(F, N, num_layers=num_layers)
         else:
-            self.base = ChimeraBase(F, N)
+            self.base = ChimeraBase(F, N, num_layers=num_layers)
         self.embed_head = EmbeddingHead(2*N, F, D, embed_activation)
         self.mag_base = BaseMaskHead(
             2*N, F, C, 3, torch.nn.Softmax(dim=-1)
@@ -237,13 +233,14 @@ class ChimeraMagPhasebook(torch.nn.Module):
         return out_embed, out_masks, out_states
 
 class ChimeraCombook(torch.nn.Module):
-    def __init__(self, F, C, D, N=400, embed_activation=torch.nn.Sigmoid(),
+    def __init__(self, F, C, D, N=400, num_layers=4,
+                 embed_activation=torch.nn.Sigmoid(),
                  residual_base=False):
         super(ChimeraCombook, self).__init__()
         if residual_base:
-            self.base = ResidualChimeraBase(F, N)
+            self.base = ResidualChimeraBase(F, N, num_layers=num_layers)
         else:
-            self.base = ChimeraBase(F, N)
+            self.base = ChimeraBase(F, N, num_layers=num_layers)
         self.embed_head = EmbeddingHead(2*N, F, D, embed_activation)
         self.mask_base = BaseMaskHead(
             2*N, F, C, 12, torch.nn.Softmax(dim=-1)
