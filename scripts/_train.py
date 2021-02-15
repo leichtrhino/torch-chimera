@@ -52,6 +52,7 @@ def validate_training_io_argument(args, parser):
 def add_training_argument(parser):
     parser.add_argument('--epoch', type=int, default=1, help='training epoch')
     parser.add_argument('--batch-size', type=int, default=32, help='batch size')
+    parser.add_argument('--compute-batch-size', type=int, default=None, help='batch size for computation')
     parser.add_argument('--lr', type=float, help='learning rate. if not provided, 1e-3 (chimera++) or 1e-4 (wave-approximation) is set')
     parser.add_argument('--loss-function', required=True, choices=('chimera++', 'wave-approximation'))
     return parser
@@ -59,6 +60,12 @@ def add_training_argument(parser):
 def validate_training_argument(args, parser):
     if args.epoch < 0:
         parser.error('--epoch is positive')
+    if args.batch_size <= 0:
+        parser.error('--batch-size is positive')
+    if args.compute_batch_size is None:
+        args.compute_batch_size = args.batch_size
+    if args.batch_size % args.compute_batch_size != 0:
+        parser.error('--compute-batch-size is a divisor of --batch-size')
     if args.lr is None:
         args.lr = 1e-3 if args.loss_function == 'chimera++' else\
             1e-4 if args.loss_function == 'wave-approximation' else\
@@ -71,13 +78,13 @@ def train(args):
     # build dataset
     train_dataset = FolderTuple(args.train_dir, args.sr, args.segment_duration)
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True
+        train_dataset, batch_size=args.compute_batch_size, shuffle=True
     )
     if args.validation_dir is not None:
         validation_dataset = FolderTuple(
             args.validation_dir, args.sr, args.segment_duration)
         validation_loader = torch.utils.data.DataLoader(
-            validation_dataset, batch_size=args.batch_size, shuffle=False
+            validation_dataset, batch_size=args.compute_batch_size, shuffle=False
         )
 
     # build (and load) a model
@@ -137,6 +144,7 @@ def train(args):
 
     # train and validation loop
     epoch = initial_epoch
+    optimizer.zero_grad()
     for epoch in range(initial_epoch+1, initial_epoch+args.epoch+1):
         sum_loss = 0
         total_batch = 0
@@ -166,16 +174,32 @@ def train(args):
             sum_loss += loss.item()
             total_batch += batch.shape[0]
             ave_loss = sum_loss / total_batch
-            # Zero gradients, perform a backward pass, and update the weights.
-            optimizer.zero_grad()
+            # perform a backward pass
+            loss = loss / (args.batch_size // args.compute_batch_size)
             loss.backward()
+            if step % (args.batch_size // args.compute_batch_size) == 0:
+                # update the weights.
+                optimizer.step()
+                optimizer.zero_grad()
+                # Print learning statistics
+                print_step = step // (args.batch_size // args.compute_batch_size)
+                curr_output = f'\repoch {epoch} step {print_step} loss={ave_loss}'
+                sys.stdout.write('\r' + ' ' * last_output_len)
+                sys.stdout.write(curr_output)
+                sys.stdout.flush()
+                last_output_len = len(curr_output)
+
+        if step % (args.batch_size // args.compute_batch_size) != 0:
+            # update the weights.
             optimizer.step()
             # Print learning statistics
-            curr_output = f'\repoch {epoch} step {step} loss={ave_loss}'
+            print_step = step // (args.batch_size // args.compute_batch_size) + 1
+            curr_output = f'\repoch {epoch} step {print_step} loss={ave_loss}'
             sys.stdout.write('\r' + ' ' * last_output_len)
             sys.stdout.write(curr_output)
             sys.stdout.flush()
             last_output_len = len(curr_output)
+        optimizer.zero_grad()
 
         if args.validation_dir is not None:
             model.eval()
