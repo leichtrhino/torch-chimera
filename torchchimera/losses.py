@@ -11,9 +11,10 @@ def loss_dc(embd, label, weight=None):
         weight = torch.sqrt(weight).unsqueeze(-1)
         embd = embd * weight
         label = label * weight
-    return torch.sum(embd.transpose(1, 2).bmm(embd) ** 2) \
+    return (torch.sum(embd.transpose(1, 2).bmm(embd) ** 2) \
         + torch.sum(label.transpose(1, 2).bmm(label) ** 2) \
-        - 2 * torch.sum(embd.transpose(1, 2).bmm(label) ** 2)
+        - 2 * torch.sum(embd.transpose(1, 2).bmm(label) ** 2)) \
+        / embd.shape[0]
 
 def loss_dc_deep_lda(embd, label, weight=None):
     if type(weight) == torch.Tensor:
@@ -23,7 +24,7 @@ def loss_dc_deep_lda(embd, label, weight=None):
     C = label.shape[2]
     YtV = label.transpose(1, 2).bmm(embd)
     YtY = label.transpose(1, 2).bmm(label) + 1e-24 * torch.eye(C, device=label.device)
-    return torch.sum((embd - label.bmm(YtY.inverse().bmm(YtV))) ** 2)
+    return torch.sum((embd - label.bmm(YtY.inverse().bmm(YtV))) ** 2) / embd.shape[0]
 
 def loss_dc_whitened(embd, label, weight=None):
     if type(weight) == torch.Tensor:
@@ -35,10 +36,10 @@ def loss_dc_whitened(embd, label, weight=None):
     VtV = embd.transpose(1, 2).bmm(embd) + 1e-24 * torch.eye(D)
     VtY = embd.transpose(1, 2).bmm(label)
     YtY = label.transpose(1, 2).bmm(label) + 1e-24 * torch.eye(C)
-    return embd.shape[0] * D - torch.trace(torch.sum(
+    return D - torch.trace(torch.sum(
         VtV.inverse().bmm(VtY).bmm(YtY.inverse()).bmm(VtY.transpose(1, 2)),
         dim=0
-    ))
+    )) / embd.shape[0]
 
 def loss_dc_whitened_(embd, label, weight=None):
     if type(weight) == torch.Tensor:
@@ -59,7 +60,7 @@ def loss_dc_whitened_(embd, label, weight=None):
     Y = label
     YtV = Y.transpose(1, 2).bmm(V)
     YtY = Y.transpose(1, 2).bmm(Y) + 1e-24 * torch.eye(C)
-    return torch.sum((V - Y.bmm(YtY.inverse()).bmm(YtV)) ** 2)
+    return torch.sum((V - Y.bmm(YtY.inverse()).bmm(YtV)) ** 2) / embd.shape[0]
 
 def permutation_free(loss_function):
     def _loss_function(*args, **kwargs):
@@ -84,7 +85,7 @@ def loss_mi_msa(mask, mixture, sources):
     phase_comp = lambda X: torch.atan2(*X.split(1, dim=-1)[::-1]).squeeze()
     abs_X = abs_comp(mixture)
     abs_S = abs_comp(sources)
-    return torch.sum((mask * abs_X - abs_S) ** 2)
+    return torch.sum((mask * abs_X - abs_S) ** 2) / mask.shape[0]
 
 def loss_mi_tpsa(mask, mixture, sources, gamma=1, L=1):
     C = mask.shape[1]
@@ -103,9 +104,9 @@ def loss_mi_tpsa(mask, mixture, sources, gamma=1, L=1):
     )
 
     if L == 1:
-        return torch.sum(torch.abs(mask * abs_X - spectrum))
+        return torch.sum(torch.abs(mask * abs_X - spectrum)) / mask.shape[0]
     elif L == 2:
-        return torch.sum((mask * abs_X - spectrum) ** L)
+        return torch.sum((mask * abs_X - spectrum) ** L) / mask.shape[0]
     else:
         raise NotImplementedError()
 
@@ -113,7 +114,7 @@ def loss_mi_tpsa(mask, mixture, sources, gamma=1, L=1):
 # source_pred: (batch_size, n_channels, waveform_length)
 # source_true: (batch_size, n_channels, waveform_length)
 def loss_wa(source_pred, source_true):
-    return torch.sum(torch.abs(source_pred - source_true))
+    return torch.sum(torch.abs(source_pred - source_true)) / source_pred.shape[0]
 
 # loss function for spectrogram (complex domain)
 # com_pred: (batch_size, n_channels, freq_bin, spec_time, 2)
@@ -130,8 +131,8 @@ def loss_csa(com_pred, mixture, sources, L=1):
     source_pred = comp_mul(com_pred, mixture.unsqueeze(1))
 
     if L == 1:
-        return torch.sum(abs_comp(source_pred - sources))
+        return torch.sum(abs_comp(source_pred - sources)) / com_pred.shape[0]
     elif L == 2:
-        return torch.sum(abs_comp(source_pred - sources) ** 2)
+        return torch.sum(abs_comp(source_pred - sources) ** 2) / com_pred.shape[0]
     else:
         raise NotImplementedError()

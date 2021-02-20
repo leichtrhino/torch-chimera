@@ -171,7 +171,7 @@ def train(args):
             y_pred = model(batch.sum(dim=1))
             loss = compute_loss(batch, y_pred, args.stft_setting,
                                 args.loss_function, args.permutation_free)
-            sum_loss += loss.item()
+            sum_loss += loss.item() * batch.shape[0]
             total_batch += batch.shape[0]
             ave_loss = sum_loss / total_batch
             # perform a backward pass
@@ -223,7 +223,7 @@ def train(args):
                     y_pred = model(batch.sum(dim=1))
                     loss = compute_loss(batch, y_pred, args.stft_setting,
                                         args.loss_function, args.permutation_free)
-                    sum_val_loss += loss.item()
+                    sum_val_loss += loss.item() * batch.shape[0]
                     total_batch += batch.shape[0]
             ave_val_loss = sum_val_loss / total_batch
             sys.stdout.write('\r' + ' ' * last_output_len)
