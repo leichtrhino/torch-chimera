@@ -56,7 +56,7 @@ def validate_model_argument(args, parser):
     if args.embedding_dim <= 0:
         parser.error('--embedding-dim is positive')
     if args.model_type == 'ChimeraMagPhasebookWithMisi' and\
-       args.n_misi_layer <= 0:
+       args.n_misi_layer < 0:
         parser.error('--n-misi-layer is positive')
     return args
 
