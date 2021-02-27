@@ -136,13 +136,22 @@ class TrainableIstftLayer(torch.nn.Module):
         return self.conv(x) / self.n_fft
 
 class TrainableMisiLayer(torch.nn.Module):
-    def __init__(self, n_fft):
+    def __init__(self, n_fft, n_channels=None):
         super(TrainableMisiLayer, self).__init__()
         self.n_fft = n_fft
         self.hop_length = n_fft // 4
         self.win_length = n_fft
-        self.stft_layer = TrainableStftLayer(n_fft)
-        self.istft_layer = TrainableIstftLayer(n_fft)
+        self.n_channels = n_channels
+        if n_channels is None:
+            self.stft_layer = TrainableStftLayer(n_fft)
+            self.istft_layer = TrainableIstftLayer(n_fft)
+        else:
+            self.stft_layer = torch.nn.ModuleList([
+                TrainableStftLayer(n_fft) for _ in range(n_channels)
+            ])
+            self.istft_layer = torch.nn.ModuleList([
+                TrainableIstftLayer(n_fft) for _ in range(n_channels)
+            ])
     # input: (batch_size * n_channels, 2*(n_fft//2+1), spec_time)
     # input: (batch_size * n_channels, 2*(n_fft//2+1), spec_time)
     #        this input is obtained by mag.repeat(1, 2, 1)
@@ -153,13 +162,36 @@ class TrainableMisiLayer(torch.nn.Module):
         n_channels, _, spec_time = Shat.shape
         n_channels //= batch_size
 
-        shat = self.istft_layer(Shat) # : (B*C, 1, W)
+        if self.n_channels is None:
+            shat = self.istft_layer(Shat) # : (B*C, 1, W)
+        else:
+            shat = torch.stack(
+                [l(b) for l, b in zip(
+                    self.istft_layer,
+                    Shat.view(batch_size, n_channels, 2*(self.n_fft//2+1), spec_time).unbind(dim=1)
+                )],
+                dim=1
+            ).view((batch_size * n_channels, 1, waveform_length)) # : (B*C, 1, W)
+
         delta = mixture - torch.sum(
             shat.reshape(batch_size, n_channels, waveform_length), dim=1
         ) # : (B, W)
-        tmp = self.stft_layer(
-            shat + delta.repeat_interleave(n_channels, 0).unsqueeze(1) / n_channels
-        ) # : (B*C, 2*F, T)
+        if self.n_channels is None:
+            tmp = self.stft_layer(
+                shat + delta.repeat_interleave(n_channels, 0).unsqueeze(1) / n_channels
+            ) # : (B*C, 2*F, T)
+        else:
+            tmp = torch.stack(
+                [
+                    l(b + delta.unsqueeze(1) / n_channels) for l, b in
+                    zip(
+                        self.stft_layer,
+                        shat.view(batch_size, n_channels, 1, waveform_length).unbind(dim=1)
+                    )
+                ],
+                dim=1
+            ).view((batch_size * n_channels, 2*(self.n_fft//2+1), spec_time)) # : (B*C, 2*F, T)
+
         phase = torch.nn.functional.normalize(
             tmp.reshape(batch_size*n_channels, 2, self.n_fft//2+1, spec_time),
             p=2, dim=1
@@ -167,18 +199,24 @@ class TrainableMisiLayer(torch.nn.Module):
         return Shatmag * phase
 
 class TrainableMisiNetwork(torch.nn.Module):
-    def __init__(self, n_fft, layer_num=1):
+    def __init__(self, n_fft, layer_num=1, n_channels=None):
         super(TrainableMisiNetwork, self).__init__()
         self.n_fft = n_fft
         self.hop_length = n_fft // 4
         self.win_length = n_fft
+        self.n_channels = n_channels
         self.stft_layer = TrainableStftLayer(n_fft)
-        self.istft_layer = TrainableIstftLayer(n_fft)
+        if n_channels is None:
+            self.istft_layer = TrainableIstftLayer(n_fft)
+        else:
+            self.istft_layer = torch.nn.ModuleList([
+                TrainableIstftLayer(n_fft) for _ in range(n_channels)
+            ])
         self.misi_layers = torch.nn.ModuleList([
-            TrainableMisiLayer(n_fft) for _ in range(layer_num)
+            TrainableMisiLayer(n_fft, n_channels) for _ in range(layer_num)
         ])
     def add_layer(self):
-        self.misi_layers.append(TrainableMisiLayer(self.n_fft))
+        self.misi_layers.append(TrainableMisiLayer(self.n_fft, self.n_channels))
     # input: (batch_size, n_channels, freq_bins, spec_time, 2)
     # input: (batch_size, waveform_length)
     # output: (batch_size, n_channels, waveform_length)
@@ -205,6 +243,14 @@ class TrainableMisiNetwork(torch.nn.Module):
         Shat = Shat.reshape(batch_size*n_channels, 2*freq_bins, spec_time)
         for layer in self.misi_layers:
             Shat = layer(Shat, Shatmag, mixture)
-        return self.istft_layer(Shat)\
-                   .reshape(batch_size, n_channels, waveform_length)
+        if self.n_channels is None:
+            return self.istft_layer(Shat)\
+                       .reshape(batch_size, n_channels, waveform_length)
+        else:
+            return torch.cat([
+                l(b) for l, b in zip(
+                    self.istft_layer,
+                    Shat.view(batch_size, n_channels, 2*freq_bins, spec_time).unbind(dim=1)
+                )
+            ], dim=1)
 

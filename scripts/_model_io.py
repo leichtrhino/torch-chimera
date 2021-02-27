@@ -60,7 +60,8 @@ def load_model(checkpoint_path, model_type, **kwargs):
         checkpoint['model']['type'] == 'ChimeraMagPhasebookWithMisi':
         loaded_misi = TrainableMisiNetwork(
             kwargs['stft_setting'].n_fft,
-            checkpoint['model']['parameter']['n_misi_layer']
+            checkpoint['model']['parameter']['n_misi_layer'],
+            checkpoint['model']['parameter']['n_channel']
         )
         loaded_model = AdaptedChimeraMagPhasebookWithMisi(
             chimera, loaded_misi, kwargs['stft_setting'])
@@ -71,7 +72,10 @@ def load_model(checkpoint_path, model_type, **kwargs):
     elif model_type == 'ChimeraMagPhasebookWithMisi' and\
          checkpoint['model']['type'] == 'ChimeraMagPhasebook':
         misi = TrainableMisiNetwork(
-            kwargs['stft_setting'].n_fft, kwargs['n_misi_layer'])
+            kwargs['stft_setting'].n_fft,
+            kwargs['n_misi_layer'],
+            checkpoint['model']['parameter']['n_channel']
+        )
         loaded_model = AdaptedChimeraMagPhasebook(
             chimera, kwargs['stft_setting'])
         loaded_model.load_state_dict(checkpoint['model']['state_dict'])
@@ -82,7 +86,8 @@ def load_model(checkpoint_path, model_type, **kwargs):
          checkpoint['model']['type'] == 'ChimeraMagPhasebookWithMisi':
         loaded_misi = TrainableMisiNetwork(
             kwargs['stft_setting'].n_fft,
-            checkpoint['model']['parameter']['n_misi_layer']
+            checkpoint['model']['parameter']['n_misi_layer'],
+            checkpoint['model']['parameter']['n_channel'],
         )
         loaded_model = AdaptedChimeraMagPhasebookWithMisi(
             chimera, loaded_misi, kwargs['stft_setting'])
