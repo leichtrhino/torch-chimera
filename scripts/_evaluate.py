@@ -76,7 +76,7 @@ def evaluate(args):
         of = sys.stdout
     else:
         of = open(args.output_file, 'w')
-    print('data,channel,snr,si-sdr', file=of)
+    print('segment,channel,snr,si-sdr', file=of)
     with torch.no_grad():
         for data_i, s in enumerate(map(lambda s: s.unsqueeze(0), dataset), 1):
             s = s.to(args.device)
