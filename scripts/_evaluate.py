@@ -23,7 +23,6 @@ def add_evaluation_io_argument(parser):
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
     parser.add_argument('--output-file', help='output file')
     parser.add_argument('--log-file', help='log file')
-    parser.add_argument('--sync', action='store_true', help='the dataset is synchronized (e.g. music and singing voice separation)')
     parser.add_argument('--permutation-free', action='store_true', help='enable permutation-free evaluation function')
     return parser
 
@@ -38,8 +37,6 @@ def validate_evaluation_io_argument(args, parser):
 def evaluate(args):
     # build dataset
     dataset = FolderTuple(args.data_dir, args.sr, args.segment_duration)
-    if not args.sync:
-        dataset.shuffle()
     loader = torch.utils.data.DataLoader(
         dataset, batch_size=1, shuffle=False
     )
