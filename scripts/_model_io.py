@@ -112,8 +112,7 @@ def load_model(checkpoint_path, model_type, **kwargs):
         'n_lstm_layer': checkpoint['model']['parameter']['n_lstm_layer'],
         'residual': checkpoint['model']['parameter']['residual_base'],
         'n_misi_layer': kwargs.get('n_misi_layer', None) \
-        if 'n_misi_layer' not in checkpoint['model']['parameter'] \
-        or not checkpoint['model']['parameter']['n_misi_layer'] \
+        if kwargs.get('n_misi_layer', None)
         else checkpoint['model']['parameter']['n_misi_layer'],
     }
     return model, update_args
