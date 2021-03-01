@@ -19,7 +19,6 @@ from _training_common import exclude_silence
 
 def add_evaluation_io_argument(parser):
     parser.add_argument('--data-dir', nargs='+', required=True, help="directory of validation dataset")
-    parser.add_argument('--cutoff-rms', type=float, help='cutoff RMS (in db)')
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
     parser.add_argument('--output-file', help='output file')
     parser.add_argument('--log-file', help='log file')
@@ -80,10 +79,6 @@ def evaluate(args):
     with torch.no_grad():
         for data_i, s in enumerate(map(lambda s: s.unsqueeze(0), dataset), 1):
             s = s.to(args.device)
-            if args.cutoff_rms:
-                s = exclude_silence(s, args.stft_setting, args.cutoff_rms)
-                if s is None:
-                    continue
 
             _, _, shat, _ = model(s.sum(dim=1))
             waveform_length = min(s.shape[-1], shat.shape[-1])
