@@ -78,6 +78,15 @@ def evaluate(args):
     print('segment,channel,snr,si-sdr', file=of)
     with torch.no_grad():
         for data_i, s in enumerate(map(lambda s: s.unsqueeze(0), dataset), 1):
+            scale = torch.sqrt(
+                s.shape[-1] / torch.sum(s**2, dim=-1).clamp(min=1e-32)
+            )
+            scale_mix = 1. / torch.max(
+                torch.sum(scale.unsqueeze(-1) * s, dim=1).abs(), dim=-1
+            )[0]
+            scale_mix = torch.min(scale_mix, torch.ones_like(scale_mix))
+            scale *= scale_mix.unsqueeze(-1)
+            s *= scale.unsqueeze(-1) * 0.98
             s = s.to(args.device)
 
             _, _, shat, _ = model(s.sum(dim=1))
