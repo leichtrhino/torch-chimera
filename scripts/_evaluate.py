@@ -20,6 +20,7 @@ from _training_common import exclude_silence
 def add_evaluation_io_argument(parser):
     parser.add_argument('--data-dir', nargs='+', required=True, help="directory of validation dataset")
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
+    parser.add_argument('--batch-size', type=int, default=1, help='batch size')
     parser.add_argument('--output-file', help='output file')
     parser.add_argument('--log-file', help='log file')
     parser.add_argument('--permutation-free', action='store_true', help='enable permutation-free evaluation function')
@@ -31,13 +32,15 @@ def validate_evaluation_io_argument(args, parser):
             parser.error(f'"{d}" is not a directory')
     if args.input_checkpoint and not os.path.isfile(args.input_checkpoint):
         parser.error(f'input checkpoint "{args.input_checkpoint}" is not a file')
+    if args.batch_size <= 0:
+        parser.error('batch size must be positive')
     return args
 
 def evaluate(args):
     # build dataset
     dataset = FolderTuple(args.data_dir, args.sr, args.segment_duration)
     loader = torch.utils.data.DataLoader(
-        dataset, batch_size=1, shuffle=False
+        dataset, batch_size=args.batch_size, shuffle=False
     )
 
     # load a model
@@ -77,7 +80,7 @@ def evaluate(args):
         of = open(args.output_file, 'w')
     print('segment,channel,snr,si-sdr', file=of)
     with torch.no_grad():
-        for data_i, s in enumerate(map(lambda s: s.unsqueeze(0), dataset), 1):
+        for batch_i, s in enumerate(loader, 0):
             scale = torch.sqrt(
                 s.shape[-1] / torch.sum(s**2, dim=-1).clamp(min=1e-32)
             )
@@ -94,9 +97,12 @@ def evaluate(args):
             s = s[:, :, :waveform_length]
             shat = shat[:, :, :waveform_length]
 
-            snr = eval_snr(shat, s)[0]
-            si_sdr = eval_si_sdr(shat, s)[0]
-            for channel_i, (_snr, _si_sdr) in enumerate(zip(snr, si_sdr), 1):
-                print(f'{data_i},{channel_i},{_snr},{_si_sdr}', file=of)
+            snr = eval_snr(shat, s)
+            si_sdr = eval_si_sdr(shat, s)
+            for i, (_snr, _si_sdr) in enumerate(zip(snr, si_sdr), 1):
+                sample_i = batch_i * args.batch_size + i
+                for channel_i, (__snr, __si_sdr) in \
+                    enumerate(zip(_snr, _si_sdr), 1):
+                    print(f'{sample_i},{channel_i},{__snr},{__si_sdr}', file=of)
     of.close()
 
