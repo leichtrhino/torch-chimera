@@ -48,24 +48,23 @@ These models are trained with
 - N(unit size) = 600 for each BLSTM layer
 - the other parameters: the same as [Roux et al. ICASSP (2019)].
 
-| loss-function  |  epoch |   SNR |  SI-SDR | Note                                         |
-| :------------- | -----: | ----: | ------: | :-------------------------------------       |
-| dc             |     10 |  4.27 |    2.22 |                                              |
-| dc             |     30 |  3.12 |    0.58 |                                              |
-| dc             |     40 |  3.16 |    0.57 |                                              |
-| dc             |     50 |  4.13 |    1.97 |                                              |
-| dc             |     60 |  3.86 |    1.68 |                                              |
-| dc             |     70 |  3.74 |    1.53 |                                              |
-| wa             |     10 |  7.05 |    5.67 |                                              |
-| wa             |     20 |  7.18 |    5.81 |                                              |
-| wa             |     30 |  7.20 |    5.82 | model availables at [model-dsd100-wa-30.pth] |
-| wa             |     40 |  7.03 |    5.65 |                                              |
-| wa             |     50 |  6.94 |    5.56 |                                              |
-| wa             |     60 |  6.98 |    5.60 |                                              |
+| loss-function  | epoch  | SNR   | SI-SDR  | Note                                   |
+| :------------- | -----: | ----: | ------: | :------------------------------------- |
+| dc             | 10     | 4.27  | 2.22    |                                        |
+| dc             | 30     | 3.12  | 0.58    |                                        |
+| dc             | 40     | 3.16  | 0.57    |                                        |
+| dc             | 50     | 4.13  | 1.97    |                                        |
+| dc             | 60     | 3.86  | 1.68    |                                        |
+| dc             | 70     | 3.74  | 1.53    |                                        |
+| wa             | 10     | 7.05  | 5.67    |                                        |
+| wa             | 20     | 7.18  | 5.81    |                                        |
+| wa             | 30     | 7.20  | 5.82    |                                        |
+| wa             | 40     | 7.03  | 5.65    |                                        |
+| wa             | 50     | 6.94  | 5.56    |                                        |
+| wa             | 60     | 6.98  | 5.60    |                                        |
 
 **Note**: For evaluation, the DSD100 test set was split into 3 seconds of audio, excluding silent frames (< -10db).
 
-[model-dsd100-wa-30.pth]: https://drive.google.com/file/d/1Nk2McY4Csr86mAV-f7qvic5fGM_t9Sx5/view?usp=sharing
 
 ##### Models trained on DSD100+MedleyDB and Voxceleb-like dataset
 
@@ -76,34 +75,34 @@ These models are trained with
 - N(unit size) = 600 for each BLSTM layer
 - the other parameters: the same as [Roux et al. ICASSP (2019)].
 
-| loss-function  |  epoch |       snr |     si-sdr | Note |
-| :------------- | -----: | --------: | ---------: |      |
-| dc             |     10 |  2.691293 |  0.3547386 |      |
-| dc             |     20 |  3.065684 |  0.5978485 |      |
-| dc             |     30 |  3.555941 |  1.0719946 |      |
-| dc             |     40 |  3.696064 |  1.4312759 |      |
-| dc             |     50 |  3.987979 |  1.6695048 |      |
-| dc             |     60 |  3.965536 |  1.3228118 |      |
-| dc             |     70 |  4.123527 |  1.6077654 |      |
-| dc             |     80 |  3.897715 |  1.2623440 |      |
-| dc             |     90 |  4.289346 |  1.9664130 |      |
-| dc             |    100 |  4.326386 |  2.0015590 |      |
-| wa             |     10 |  7.793808 |  6.2887853 |      |
-| wa             |     20 |  7.924883 |  6.5097553 |      |
-| wa             |     30 |  7.828930 |  6.3451356 |      |
-| wa             |     40 |  7.950482 |  6.5479744 |      |
-| wa             |     50 |  7.900053 |  6.4351206 |      |
-| wa             |     60 |  8.098643 |  6.7245795 |      |
-| wa             |     70 |  7.918584 |  6.4659921 |      |
-| wa             |     80 |  7.964468 |  6.5288680 |      |
-| wa             |     90 |  7.775478 |  6.2254487 |      |
-| wa             |    100 |  8.174800 |  6.7872839 |      |
+| loss-function  | epoch  | snr       | si-sdr     | Note |
+| :------------- | -----: | --------: | ---------: | :--- |
+| dc             | 10     | 2.691293  | 0.3547386  |      |
+| dc             | 20     | 3.065684  | 0.5978485  |      |
+| dc             | 30     | 3.555941  | 1.0719946  |      |
+| dc             | 40     | 3.696064  | 1.4312759  |      |
+| dc             | 50     | 3.987979  | 1.6695048  |      |
+| dc             | 60     | 3.965536  | 1.3228118  |      |
+| dc             | 70     | 4.123527  | 1.6077654  |      |
+| dc             | 80     | 3.897715  | 1.2623440  |      |
+| dc             | 90     | 4.289346  | 1.9664130  |      |
+| dc             | 100    | 4.326386  | 2.0015590  |      |
+| wa             | 10     | 7.793808  | 6.2887853  |      |
+| wa             | 20     | 7.924883  | 6.5097553  |      |
+| wa             | 30     | 7.828930  | 6.3451356  |      |
+| wa             | 40     | 7.950482  | 6.5479744  |      |
+| wa             | 50     | 7.900053  | 6.4351206  |      |
+| wa             | 60     | 8.098643  | 6.7245795  |      |
+| wa             | 70     | 7.918584  | 6.4659921  |      |
+| wa             | 80     | 7.964468  | 6.5288680  |      |
+| wa             | 90     | 7.775478  | 6.2254487  |      |
+| wa             | 100    | 8.174800  | 6.7872839  |      |
 
 **Note**: For evaluation, the DSD100 test set was split into 3 seconds of audio, excluding silent frames (< -10db).
 
 #### Sample script
 
-Source separation can be done with the following script using the model `models/model.pth`.
+Source separation can be done with `scripts/chimera-torch.py`.
 
 ```shell
 python scripts/chimera-torch.py predict \
