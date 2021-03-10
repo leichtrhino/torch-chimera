@@ -45,7 +45,7 @@ def add_model_argument(parser):
     parser.add_argument('--n-hidden', type=int, default=600, help='num of hidden state')
     parser.add_argument('--embedding-dim', type=int, default=20, help='embedding dimension of deep clustering')
     parser.add_argument('--residual', action='store_true', help='residual base module')
-    parser.add_argument('--n-misi-layer', type=int, default=0, help='num of MISI layers')
+    parser.add_argument('--n-misi-layer', type=int, default=None, help='num of MISI layers')
     return parser
 
 def validate_model_argument(args, parser):
@@ -56,7 +56,7 @@ def validate_model_argument(args, parser):
     if args.embedding_dim <= 0:
         parser.error('--embedding-dim is positive')
     if args.model_type == 'ChimeraMagPhasebookWithMisi' and\
-       args.n_misi_layer < 0:
+       args.n_misi_layer is not None and args.n_misi_layer < 0:
         parser.error('--n-misi-layer is positive')
     return args
 
