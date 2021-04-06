@@ -16,6 +16,7 @@ from torchchimera.losses import permutation_free
 from torchchimera.losses import loss_mi_tpsa
 from torchchimera.losses import loss_dc_deep_lda
 from torchchimera.losses import loss_wa
+from torchchimera import metrics
 
 class StftSetting(object):
     def __init__(self, n_fft, hop_length=None, win_length=None, window=None):
@@ -120,7 +121,7 @@ def dc_weight_matrix(X):
     return weight
 
 def compute_loss(s, y_pred, stft_setting,
-                 loss_function='chimera++', permutation_free=False):
+                 loss_function='chimera++', is_permutation_free=False):
     stft = Stft(stft_setting)
     x = s.sum(dim=1)
     S, X = stft(s), stft(x)
@@ -131,7 +132,7 @@ def compute_loss(s, y_pred, stft_setting,
         weight = dc_weight_matrix(X)
         alpha = 0.975
         loss_dc = alpha * loss_dc_deep_lda(embd, Y, weight)
-        if permutation_free:
+        if is_permutation_free:
             loss_mi = (1-alpha) * permutation_free(loss_mi_tpsa)(mag, X, S, gamma=2.)
         else:
             loss_mi = (1-alpha) * loss_mi_tpsa(mag, X, S, gamma=2.)
@@ -140,10 +141,20 @@ def compute_loss(s, y_pred, stft_setting,
         waveform_length = min(s.shape[-1], shat.shape[-1])
         s = s[:, :, :waveform_length]
         shat = shat[:, :, :waveform_length]
-        if permutation_free:
+        if is_permutation_free:
             loss = permutation_free(loss_wa)(shat, s)
         else:
             loss = loss_wa(shat, s)
+    elif loss_function == 'si-sdr':
+        waveform_length = min(s.shape[-1], shat.shape[-1])
+        s = torch.clamp(s[:, :, :waveform_length], min=1e-120)
+        shat = torch.clamp(shat[:, :, :waveform_length], min=1e-120)
+        if is_permutation_free:
+            score = permutation_free(lambda x, y: -1*torch.sum(metrics.eval_si_sdr(x, y))) \
+            (shat, s)
+        else:
+            score = torch.sum(metrics.eval_si_sdr(shat, s))
+        loss = -1 * score / (s.shape[0] * s.shape[1])
     else:
         loss = None
     return loss
