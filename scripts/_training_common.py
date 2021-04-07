@@ -147,8 +147,8 @@ def compute_loss(s, y_pred, stft_setting,
             loss = loss_wa(shat, s)
     elif loss_function == 'si-sdr':
         waveform_length = min(s.shape[-1], shat.shape[-1])
-        s = torch.clamp(s[:, :, :waveform_length], min=1e-120)
-        shat = torch.clamp(shat[:, :, :waveform_length], min=1e-120)
+        s = s[:, :, :waveform_length]
+        shat = shat[:, :, :waveform_length]
         if is_permutation_free:
             score = permutation_free(lambda x, y: -1*torch.sum(metrics.eval_si_sdr(x, y))) \
             (shat, s)
