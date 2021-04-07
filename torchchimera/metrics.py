@@ -12,12 +12,17 @@ def eval_snr(s_pred, s_true):
 
 # s_pred: (batch_size, n_channel, waveform_length)
 # s_true: (batch_size, n_channel, waveform_length)
-def eval_si_sdr(s_pred, s_true):
-    scale_s = torch.sum(s_pred * s_true, dim=-1, keepdims=True) /\
-        torch.sum(s_true**2, dim=-1, keepdims=True) * s_true
+def eval_si_sdr(s_pred, s_true, epsilon=None):
+    if epsilon is None:
+        epsilon = max(torch.finfo(s_true.dtype).eps,
+                      torch.finfo(s_pred.dtype).eps)
+    scale_s = s_true *\
+        torch.sum(s_pred * s_true, dim=-1, keepdims=True) /\
+        (torch.sum(s_true**2, dim=-1, keepdims=True) + epsilon)
     return 10 * torch.log10(
         torch.sum(scale_s ** 2, axis=-1) /
-        torch.sum((scale_s - s_pred) ** 2, axis=-1)
+        (torch.sum((scale_s - s_pred) ** 2, axis=-1) + epsilon) +
+        epsilon
     )
 
 def permutation_free(eval_function):
