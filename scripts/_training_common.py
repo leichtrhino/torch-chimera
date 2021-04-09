@@ -82,12 +82,12 @@ class AdaptedChimeraMagPhasebook(torch.nn.Module):
         istft = Istft(self.stft_setting)
 
         X = stft(x)
-        embd, (mag, com), out_status = self.chimera(
+        embd, (com,), out_status = self.chimera(
             torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
-            states=states, outputs=['mag', 'com']
+            states=states, outputs=['com']
         )
         shat = istft(comp_mul(com, X.unsqueeze(1)))
-        return embd, mag, shat, out_status
+        return embd, com, shat, out_status
 
 class AdaptedChimeraMagPhasebookWithMisi(torch.nn.Module):
     def __init__(self, chimera, misi, stft_setting):
@@ -98,12 +98,12 @@ class AdaptedChimeraMagPhasebookWithMisi(torch.nn.Module):
 
     def forward(self, x, states=None):
         X = Stft(self.stft_setting)(x)
-        embd, (mag, com), out_status = self.chimera(
+        embd, (com,), out_status = self.chimera(
             torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
-            states=states, outputs=['mag', 'com']
+            states=states, outputs=['com']
         )
         shat = self.misi(com, x)
-        return embd, mag, shat, out_status
+        return embd, com, shat, out_status
 
 def dc_label_matrix(S):
     batch_size, n_channels, freq_bins, spec_time, _ = S.shape
@@ -126,12 +126,13 @@ def compute_loss(s, y_pred, stft_setting,
     x = s.sum(dim=1)
     S, X = stft(s), stft(x)
 
-    embd, mag, shat, _ = y_pred
+    embd, com, shat, _ = y_pred
     if loss_function == 'chimera++':
         Y = dc_label_matrix(S)
         weight = dc_weight_matrix(X)
         alpha = 0.975
         loss_dc = alpha * loss_dc_deep_lda(embd, Y, weight)
+        mag = torch.sum(com**2, dim=-1)
         if is_permutation_free:
             loss_mi = (1-alpha) * permutation_free(loss_mi_tpsa)(mag, X, S, gamma=2.)
         else:
