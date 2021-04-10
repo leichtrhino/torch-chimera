@@ -54,7 +54,12 @@ def add_training_argument(parser):
     parser.add_argument('--batch-size', type=int, default=32, help='batch size')
     parser.add_argument('--compute-batch-size', type=int, default=None, help='batch size for computation')
     parser.add_argument('--lr', type=float, help='learning rate. if not provided, 1e-3 (chimera++) or 1e-4 (wave-approximation) is set')
-    parser.add_argument('--loss-function', required=True, choices=('chimera++', 'wave-approximation', 'si-sdr'))
+    parser.add_argument('--loss-function', required=True,
+                        choices=('chimera++',
+                                 'chimera++-csa',
+                                 'wave-approximation',
+                                 'spectrogram-approximation',
+                                 'si-sdr'))
     return parser
 
 def validate_training_argument(args, parser):
@@ -68,7 +73,9 @@ def validate_training_argument(args, parser):
         parser.error('--compute-batch-size is a divisor of --batch-size')
     if args.lr is None:
         args.lr = 1e-3 if args.loss_function == 'chimera++' else\
+            1e-3 if args.loss_function == 'chimera++-csa' else\
             1e-4 if args.loss_function == 'wave-approximation' else\
+            1e-4 if args.loss_function == 'spectrogram-approximation' else\
             1e-4 if args.loss_function == 'si-sdr' else\
             0
     if args.lr <= 0:

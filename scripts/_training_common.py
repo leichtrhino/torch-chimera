@@ -14,6 +14,7 @@ except:
     import torchchimera
 from torchchimera.losses import permutation_free
 from torchchimera.losses import loss_mi_tpsa
+from torchchimera.losses import loss_csa
 from torchchimera.losses import loss_dc_deep_lda
 from torchchimera.losses import loss_wa
 from torchchimera import metrics
@@ -137,7 +138,19 @@ def compute_loss(s, y_pred, stft_setting,
             loss_mi = (1-alpha) * permutation_free(loss_mi_tpsa)(mag, X, S, gamma=2.)
         else:
             loss_mi = (1-alpha) * loss_mi_tpsa(mag, X, S, gamma=2.)
+
         loss = loss_dc + loss_mi
+    elif loss_function == 'chimera++-csa':
+        Y = dc_label_matrix(S)
+        weight = dc_weight_matrix(X)
+        alpha = 0.975
+        loss_dc = alpha * loss_dc_deep_lda(embd, Y, weight)
+        if is_permutation_free:
+            loss_mi = (1-alpha) * permutation_free(loss_csa)(com, X, S)
+        else:
+            loss_mi = (1-alpha) * loss_csa(com, X, S)
+        loss = loss_dc + loss_mi
+
     elif loss_function == 'wave-approximation':
         waveform_length = min(s.shape[-1], shat.shape[-1])
         s = s[:, :, :waveform_length]
@@ -146,6 +159,12 @@ def compute_loss(s, y_pred, stft_setting,
             loss = permutation_free(loss_wa)(shat, s)
         else:
             loss = loss_wa(shat, s)
+    elif loss_function == 'spectrogram-approximation':
+        if is_permutation_free:
+            loss = permutation_free(loss_csa)(com, X, S)
+        else:
+            loss = loss_csa(com, X, S)
+
     elif loss_function == 'si-sdr':
         waveform_length = min(s.shape[-1], shat.shape[-1])
         s = s[:, :, :waveform_length]
