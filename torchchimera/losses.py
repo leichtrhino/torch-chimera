@@ -24,7 +24,9 @@ def loss_dc_deep_lda(embd, label, weight=None):
     C = label.shape[2]
     YtV = label.transpose(1, 2).bmm(embd)
     YtY = label.transpose(1, 2).bmm(label) + 1e-24 * torch.eye(C, device=label.device)
-    return torch.sum((embd - label.bmm(YtY.inverse().bmm(YtV))) ** 2) / embd.shape[0]
+    return torch.sum((embd - label.bmm(YtY.inverse().bmm(YtV))) ** 2) \
+        / torch.sum((embd - embd.mean(dim=-2, keepdims=True)) ** 2) \
+        / embd.shape[0]
 
 def loss_dc_whitened(embd, label, weight=None):
     if type(weight) == torch.Tensor:
