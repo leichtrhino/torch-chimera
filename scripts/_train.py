@@ -20,6 +20,7 @@ from _model_io import load_optimizer
 from _model_io import save_checkpoint
 from _training_common import AdaptedChimeraMagPhasebook
 from _training_common import compute_loss
+from _training_common import Stft, Istft
 
 def add_training_io_argument(parser):
     parser.add_argument('--train-dir', nargs='+', required=True, help='directory of training dataset')
@@ -162,20 +163,31 @@ def train(args):
             train_dataset.shuffle()
         model.train()
         for step, batch in enumerate(train_loader, 1):
+            batch = batch.to(args.device)
             if not args.sync:
-                scale = 10 ** (torch.rand(*batch.shape[:-1]) * -10 / 10)
+                # clean silence
+                X = Stft(args.stft_setting)(batch)
+                rms = 20 * torch.log10(torch.sqrt(
+                    torch.mean(
+                        torch.sum(X**2, dim=-1, keepdims=True),
+                        dim=-2, keepdims=True)))
+                batch = Istft(args.stft_setting)(
+                    torch.where(rms >= -60, X, torch.zeros_like(X))
+                )
+
+                scale = 10 ** (torch.rand(
+                    *batch.shape[:-1], device=args.device) * -3 / 10)
                 scale = torch.sqrt(
                     batch.shape[-1] * scale**2 /
                     torch.sum(batch**2, dim=-1).clamp(min=1e-32)
                 )
-                scale_mix = 1. / torch.max(
-                    torch.sum(scale.unsqueeze(-1) * batch, dim=1).abs(), dim=-1
+                scale_mix = 0.9999 / torch.max(
+                    torch.sum(scale.unsqueeze(-1) * batch.abs(), dim=1), dim=-1
                 )[0]
                 scale_mix = torch.min(scale_mix, torch.ones_like(scale_mix))
                 scale *= scale_mix.unsqueeze(-1)
-                batch *= scale.unsqueeze(-1) * 0.98
+                batch *= scale.unsqueeze(-1)
 
-            batch = batch.to(args.device)
             y_pred = model(batch.sum(dim=1))
             loss = compute_loss(batch, y_pred, args.stft_setting,
                                 args.loss_function, args.permutation_free)
@@ -215,19 +227,30 @@ def train(args):
                 sum_val_loss = 0
                 total_batch = 0
                 for batch in validation_loader:
+
+                    # clean silence
+                    batch = batch.to(args.device)
+                    X = Stft(args.stft_setting)(batch)
+                    rms = 20 * torch.log10(torch.sqrt(
+                        torch.mean(
+                            torch.sum(X**2, dim=-1, keepdims=True),
+                            dim=-2, keepdims=True)))
+                    batch = Istft(args.stft_setting)(
+                        torch.where(rms >= -60, X, torch.zeros_like(X))
+                    )
+
                     scale = torch.sqrt(
                         batch.shape[-1] /
                         torch.sum(batch**2, dim=-1).clamp(min=1e-32)
                     )
-                    scale_mix = 1. / torch.max(
-                        torch.sum(scale.unsqueeze(-1) * batch, dim=1).abs(),
+                    scale_mix = 0.9999 / torch.max(
+                        torch.sum(scale.unsqueeze(-1) * batch.abs(), dim=1),
                         dim=-1
                     )[0]
                     scale_mix = torch.min(scale_mix, torch.ones_like(scale_mix))
                     scale *= scale_mix.unsqueeze(-1)
-                    batch *= scale.unsqueeze(-1) * 0.98
+                    batch *= scale.unsqueeze(-1)
 
-                    batch = batch.to(args.device)
                     y_pred = model(batch.sum(dim=1))
                     loss = compute_loss(batch, y_pred, args.stft_setting,
                                         args.loss_function, args.permutation_free)
