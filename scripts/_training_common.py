@@ -83,8 +83,9 @@ class AdaptedChimeraMagPhasebook(torch.nn.Module):
         istft = Istft(self.stft_setting)
 
         X = stft(x)
+
         embd, (com,), out_status = self.chimera(
-            torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
+            10 * torch.log10(torch.sum(X**2, dim=-1).clamp(min=1e-40)),
             states=states, outputs=['com']
         )
         shat = istft(comp_mul(com, X.unsqueeze(1)))
@@ -100,7 +101,7 @@ class AdaptedChimeraMagPhasebookWithMisi(torch.nn.Module):
     def forward(self, x, states=None):
         X = Stft(self.stft_setting)(x)
         embd, (com,), out_status = self.chimera(
-            torch.log10(X.norm(p=2, dim=-1).clamp(min=1e-40)),
+            10 * torch.log10(torch.sum(X**2, dim=-1).clamp(min=1e-40)),
             states=states, outputs=['com']
         )
         shat = self.misi(com, x)
