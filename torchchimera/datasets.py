@@ -29,7 +29,7 @@ class Folder(torch.utils.data.Dataset):
                 n_frames = si.length // si.channels
             elif torchaudio.get_audio_backend() == 'soundfile':
                 n_frames = si.length
-            n_segments = math.ceil(n_frames / si.rate / self.duration)
+            n_segments = math.floor(n_frames / si.rate / self.duration)
             self.offsets.append(self.offsets[-1] + n_segments)
 
     def __len__(self):
