@@ -139,7 +139,7 @@ def train(args):
         # load optimizer from file
         try:
             optimizer, initial_epoch, update_args = load_optimizer(
-                args.input_checkpoint, model)
+                args.input_checkpoint, model, lr=args.lr)
             if args.loss_function is None or\
                args.loss_function == update_args['loss_function']:
                 for k, v in update_args.items():
