@@ -59,9 +59,12 @@ def predict(args):
     model.to(args.device)
     model.eval()
 
+    import matplotlib.pyplot as plt
     # predict and save
-    _, _, shat, _ = model(batch)
-    if shat.dim() == 3:
+    _, com, shat, _ = model(batch)
+    if shat.shape[0] > 1:
+        shat = shat.transpose(0, 1)
+    else:
         shat = shat.squeeze(0)
     for f, s in zip(args.output_files, shat):
         torchaudio.save(f, s, sample_rate=args.sr)
