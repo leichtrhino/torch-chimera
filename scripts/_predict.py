@@ -1,6 +1,7 @@
 
 import os
 import sys
+import math
 
 import torch
 import torchaudio
@@ -21,6 +22,7 @@ def add_prediction_io_argument(parser):
     parser.add_argument('--output-files', required=True, nargs='+', help='output wav files')
     parser.add_argument('--input-checkpoint', help='input checkpoint file')
     parser.add_argument('--log-file', help='log file')
+    parser.add_argument('--batch-size', type=int, default=32)
     return parser
 
 def validate_prediction_io_argument(args, parser):
@@ -39,6 +41,20 @@ def predict(args):
     if batch.dim() == 1:
         batch = batch.unsqueeze(0)
     batch = batch.to(args.device)
+    if args.segment_duration is not None:
+        orig_len = batch.shape[-1]
+        segment_length = int(args.segment_duration * args.sr)
+        sample_size = math.ceil(batch.shape[-1] / segment_length)
+        batch = torch.cat((
+            batch,
+            torch.zeros(
+                *batch.shape[:-1],
+                sample_size * segment_length - orig_len)
+        ), dim=-1)
+        batch = batch.reshape(
+            batch.shape[0],
+            sample_size,
+            segment_length)
 
     # load a model
     model, update_args = load_model(
@@ -59,9 +75,26 @@ def predict(args):
     model.to(args.device)
     model.eval()
 
-    import matplotlib.pyplot as plt
     # predict and save
-    _, com, shat, _ = model(batch)
+    if args.segment_duration is not None:
+        shats = []
+        for batch_channel in batch:
+            shat = None
+            for batch_i in range(0, sample_size, args.batch_size):
+                batch_end = min(batch_i + args.batch_size, sample_size)
+                minibatch = batch_channel[batch_i:batch_end]
+                _, _, _shat, _ = model(minibatch)
+                if shat is None:
+                    shat = _shat
+                else:
+                    shat = torch.cat((shat, _shat), dim=-1)
+            shats.append(
+                shat.transpose(0, 1).reshape(
+                    shat.shape[1], sample_size * segment_length))
+        shat = torch.stack(shats, dim=0)[:orig_len]
+    else:
+        _, _, shat, _ = model(batch)
+
     if shat.shape[0] > 1:
         shat = shat.transpose(0, 1)
     else:
