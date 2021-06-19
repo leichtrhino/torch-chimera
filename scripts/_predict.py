@@ -49,7 +49,8 @@ def predict(args):
             batch,
             torch.zeros(
                 *batch.shape[:-1],
-                sample_size * segment_length - orig_len)
+                sample_size * segment_length - orig_len,
+                device=args.device)
         ), dim=-1)
         batch = batch.reshape(
             batch.shape[0],
@@ -87,7 +88,7 @@ def predict(args):
                 if shat is None:
                     shat = _shat
                 else:
-                    shat = torch.cat((shat, _shat), dim=-1)
+                    shat = torch.cat((shat, _shat), dim=0)
             shats.append(
                 shat.transpose(0, 1).reshape(
                     shat.shape[1], sample_size * segment_length))
@@ -99,6 +100,7 @@ def predict(args):
         shat = shat.transpose(0, 1)
     else:
         shat = shat.squeeze(0)
+    shat = shat.to('cpu')
     for f, s in zip(args.output_files, shat):
         torchaudio.save(f, s, sample_rate=args.sr)
 
