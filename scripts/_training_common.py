@@ -151,6 +151,19 @@ def compute_loss(s, y_pred, stft_setting,
         else:
             loss_mi = (1-alpha) * loss_csa(com, X, S)
         loss = loss_dc + loss_mi
+    elif loss_function == 'chimera++-wa':
+        Y = dc_label_matrix(S)
+        weight = dc_weight_matrix(X)
+        alpha = 0.5
+        loss_dc = alpha * loss_dc_deep_lda(embd, Y, weight)
+        waveform_length = min(s.shape[-1], shat.shape[-1])
+        s = s[:, :, :waveform_length]
+        shat = shat[:, :, :waveform_length]
+        if is_permutation_free:
+            loss_mi = (1-alpha) * permutation_free(loss_wa)(shat, s)
+        else:
+            loss_mi = (1-alpha) * loss_wa(shat, s)
+        loss = loss_dc + loss_mi
 
     elif loss_function == 'wave-approximation':
         waveform_length = min(s.shape[-1], shat.shape[-1])

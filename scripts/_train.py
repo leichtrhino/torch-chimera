@@ -58,6 +58,7 @@ def add_training_argument(parser):
     parser.add_argument('--loss-function', required=True,
                         choices=('chimera++',
                                  'chimera++-csa',
+                                 'chimera++-wa',
                                  'wave-approximation',
                                  'spectrogram-approximation',
                                  'si-sdr'))
@@ -75,6 +76,7 @@ def validate_training_argument(args, parser):
     if args.lr is None:
         args.lr = 1e-3 if args.loss_function == 'chimera++' else\
             1e-3 if args.loss_function == 'chimera++-csa' else\
+            1e-3 if args.loss_function == 'chimera++-wa' else\
             1e-4 if args.loss_function == 'wave-approximation' else\
             1e-4 if args.loss_function == 'spectrogram-approximation' else\
             1e-4 if args.loss_function == 'si-sdr' else\
