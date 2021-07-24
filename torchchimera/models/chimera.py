@@ -1,6 +1,6 @@
 
 import torch
-from math import pi
+from math import pi, cos, sin
 
 def _initialize_lstm_weights(lstm_layer, hidden_size):
     N = hidden_size
@@ -209,7 +209,13 @@ class ChimeraMagPhasebook(torch.nn.Module):
         self.phase_base = BaseMaskHead(
             2*N, F, C, 8, torch.nn.Softmax(dim=-1)
         )
-        self.phase_head = CodebookMaskHead(2*pi*torch.arange(-3, 5)/8)
+        self.phase_head = CodebookMaskHead(
+            torch.Tensor([
+                (cos(theta), sin(theta))
+                for theta in 2*pi*torch.arange(-3, 5)/8
+            ])
+        )
+
     # valid output modes are: 'mag', 'magp', 'phase', 'phasep', 'com'
     # ['mag', 'phasep', 'com'] for L_{CHI++}(=L_{DC}+L_{MI}), L_{MI}
     # ['com'] for L_{WA}, and waveform inference at test
@@ -220,7 +226,10 @@ class ChimeraMagPhasebook(torch.nn.Module):
         out_mag_base = self.mag_base(out_base)
         out_mag = self.mag_head(out_mag_base)
         out_phase_base = self.phase_base(out_base)
-        out_phase = self.phase_head(out_phase_base)
+        out_phase_com = self.phase_head(out_phase_base)
+        out_phase = torch.atan2(
+            *out_phase_com.split(1, dim=-1)[::-1]
+        ).squeeze(-1)
         out_com = out_mag.unsqueeze(-1) * cossin(out_phase)
         out_masks = tuple(
             out_mag if mode == 'mag' else
