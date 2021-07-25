@@ -150,9 +150,16 @@ class CodebookMaskHead(torch.nn.Module):
             raise ValueError(f'invalid mode "{mode}"')
 
 class TrainableCodebookMaskHead(torch.nn.Module):
-    def __init__(self, codebook_size):
+    def __init__(self, codebook_size, out_features=1, initial_weight=None):
         super(TrainableCodebookMaskHead, self).__init__()
-        self.codebook_layer = torch.nn.Linear(codebook_size, 1, bias=False)
+        self.codebook_layer = torch.nn.Linear(codebook_size, out_features, bias=False)
+        if initial_weight is not None:
+            assert type(initial_weight) == torch.Tensor
+            assert initial_weight.shape == (out_features, codebook_size) \
+                or initial_weight.shape == (codebook_size,) and out_features == 1
+            with torch.no_grad():
+                self.codebook_layer.weight.copy_(initial_weight)
+
     def forward(self, x):
         return self.codebook_layer(x).squeeze(-1)
 
