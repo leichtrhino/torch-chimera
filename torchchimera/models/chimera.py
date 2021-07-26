@@ -1,6 +1,6 @@
 
 import torch
-from math import pi, cos, sin
+from math import pi, cos, sin, ceil, floor
 
 def _initialize_lstm_weights(lstm_layer, hidden_size):
     N = hidden_size
@@ -251,27 +251,36 @@ class ChimeraMagPhasebook(torch.nn.Module):
 class ChimeraCombook(torch.nn.Module):
     def __init__(self, F, C, D, N=400, num_layers=4,
                  embed_activation=torch.nn.Sigmoid(),
-                 residual_base=False):
+                 residual_base=False,
+                 codebook_size=12,
+                 initial_combook=None):
         super(ChimeraCombook, self).__init__()
+
         if residual_base:
             self.base = ResidualChimeraBase(F, N, num_layers=num_layers)
         else:
             self.base = ChimeraBase(F, N, num_layers=num_layers)
         self.embed_head = EmbeddingHead(2*N, F, D, embed_activation)
         self.mask_base = BaseMaskHead(
-            2*N, F, C, 12, torch.nn.Softmax(dim=-1)
+            2*N, F, C, codebook_size, torch.nn.Softmax(dim=-1)
         )
-        self.re_mask_head = TrainableCodebookMaskHead(12)
-        self.im_mask_head = TrainableCodebookMaskHead(12)
+
+        if initial_combook is not None:
+            assert type(initial_combook) == torch.Tensor\
+                and initial_combook.shape == (2, codebook_size)
+        else:
+            cossin = lambda t: torch.stack((torch.cos(t), torch.sin(t)))
+            initial_combook = torch.cat((
+                torch.zeros(2, 1),
+                cossin(torch.linspace(-pi, pi, ceil((codebook_size-1) / 2))),
+                2*cossin(torch.linspace(-pi, pi, floor((codebook_size-1) / 2))),
+            ), dim=-1)
+        self.com_mask_head = TrainableCodebookMaskHead(
+            codebook_size, 2, initial_combook)
+
     def forward(self, x, states=None):
         out_base, out_states = self.base(x, states)
         out_mask_base = self.mask_base(out_base)
-        return\
-            self.embed_head(out_base),\
-            torch.stack(
-                (
-                    self.re_mask_head(out_mask_base),
-                    self.im_mask_head(out_mask_base)
-                ),
-                dim=-1),\
+        return self.embed_head(out_base),\
+            self.com_mask_head(out_mask_base),\
             out_states
