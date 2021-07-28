@@ -12,7 +12,7 @@ def main():
     l1 = TrainableStftLayer(n_fft)
     l2 = TrainableIstftLayer(n_fft)
     X, Xhat = torch.stft(x, n_fft), l1(x.unsqueeze(1))
-    y, yhat = torchaudio.functional.istft(X, n_fft), l2(Xhat)
+    y, yhat = torch.istft(X, n_fft), l2(Xhat)
     print(X.shape, Xhat.shape)
     print(y.shape, yhat.shape)
 
