@@ -20,16 +20,13 @@ class Folder(torch.utils.data.Dataset):
         self.paths = sorted(list(pathlib.Path(root_dir).glob('**/*.wav')))
 
         for p in self.paths:
-            si, _ = torchaudio.info(str(p))
-            self.rates.append(si.rate)
+            metadata = torchaudio.info(str(p))
+            self.rates.append(metadata.sample_rate)
             if self.duration is None:
                 self.offsets.append(self.offsets[-1] + 1)
                 continue
-            if torchaudio.get_audio_backend() in ('sox', 'sox_io'):
-                n_frames = si.length // si.channels
-            elif torchaudio.get_audio_backend() == 'soundfile':
-                n_frames = si.length
-            n_segments = math.floor(n_frames / si.rate / self.duration)
+            n_segments = math.floor(
+                metadata.num_frames / metadata.sample_rate / self.duration)
             self.offsets.append(self.offsets[-1] + n_segments)
 
     def __len__(self):
@@ -45,7 +42,7 @@ class Folder(torch.utils.data.Dataset):
             offset = offset_idx * int(self.duration * self.rates[audio_idx])
             num_frames = int(self.rates[audio_idx] * self.duration)
         x, _ = torchaudio.load(
-            str(self.paths[audio_idx]), offset=offset, num_frames=num_frames
+            str(self.paths[audio_idx]), frame_offset=offset, num_frames=num_frames
         )
         x = x.mean(dim=0)
         if x.shape[-1] * self.sr / self.rates[audio_idx] < 1:
