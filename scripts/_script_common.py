@@ -40,7 +40,12 @@ def validate_feature_argument(args, parser):
     return args
 
 def add_model_argument(parser):
-    parser.add_argument('--model-type', default=None, choices=('ChimeraMagPhasebook', 'ChimeraMagPhasebookWithMisi'), help='model type')
+    parser.add_argument('--model-type',
+                        default=None,
+                        choices=('ChimeraMagPhasebook',
+                                 'ChimeraMagPhasebookWithMisi',
+                                 'ChimeraCombook'),
+                        help='model type')
     parser.add_argument('--n-lstm-layer', type=int, default=4, help='num of BLSTM layers')
     parser.add_argument('--n-hidden', type=int, default=600, help='num of hidden state')
     parser.add_argument('--embedding-dim', type=int, default=20, help='embedding dimension of deep clustering')

@@ -91,6 +91,31 @@ class AdaptedChimeraMagPhasebook(torch.nn.Module):
         shat = istft(comp_mul(com, X.unsqueeze(1)))
         return embd, com, shat, out_status
 
+class AdaptedChimeraCombook(torch.nn.Module):
+    def __init__(self, chimera, stft_setting):
+        super(AdaptedChimeraCombook, self).__init__()
+        self.chimera = chimera
+        self.stft_setting = stft_setting
+
+    def forward(self, x, states=None):
+        def comp_mul(X, Y):
+            (X_re, X_im), (Y_re, Y_im) = X.unbind(-1), Y.unbind(-1)
+            return torch.stack((
+                X_re * Y_re - X_im * Y_im,
+                X_re * Y_im + X_im * Y_re
+            ), dim=-1)
+        stft = Stft(self.stft_setting)
+        istft = Istft(self.stft_setting)
+
+        X = stft(x)
+
+        embd, com, out_status = self.chimera(
+            10 * torch.log10(torch.sum(X**2, dim=-1).clamp(min=1e-40)),
+            states=states
+        )
+        shat = istft(comp_mul(com, X.unsqueeze(1)))
+        return embd, com, shat, out_status
+
 class AdaptedChimeraMagPhasebookWithMisi(torch.nn.Module):
     def __init__(self, chimera, misi, stft_setting):
         super(AdaptedChimeraMagPhasebookWithMisi, self).__init__()
