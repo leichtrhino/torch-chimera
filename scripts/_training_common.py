@@ -56,7 +56,7 @@ class Istft(torch.nn.Module):
 
     def forward(self, x):
         freq, time = x.shape[-3], x.shape[-2]
-        y = torchaudio.functional.istft(
+        y = torch.istft(
             x.reshape(x.shape[:-3].numel(), freq, time, 2),
             self.stft_setting.n_fft,
             self.stft_setting.hop_length,

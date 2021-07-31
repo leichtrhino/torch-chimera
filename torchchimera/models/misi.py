@@ -28,7 +28,7 @@ class MisiLayer(torch.nn.Module):
             x, self.n_fft, self.hop_length, self.win_length,
             window=self.window
         )
-        istft = lambda X: torchaudio.functional.istft(
+        istft = lambda X: torch.istft(
             X, self.n_fft, self.hop_length, self.win_length,
             window=self.window
         )
@@ -76,7 +76,7 @@ class MisiNetwork(torch.nn.Module):
             self.n_fft, self.hop_length, self.win_length,
             window=self.window
         )
-        istft = lambda X: torchaudio.functional.istft(
+        istft = lambda X: torch.istft(
             X, self.n_fft, self.hop_length, self.win_length,
             window=self.window
         ).reshape(*X.shape[:-3], waveform_length)

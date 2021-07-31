@@ -24,7 +24,7 @@ def main():
     Smag, Xmag = S.norm(2, -1), X.norm(2, -1)
     mask = 10 ** (torch.log10(Smag.clamp(min=1e-36)) -\
         torch.log10(Xmag.clamp(min=1e-24).unsqueeze(1)))
-    sbar = torchaudio.functional.istft(
+    sbar = torch.istft(
         (mask.unsqueeze(-1) * X.unsqueeze(1))
         .reshape(10, freq_bins, spec_time, 2),
         n_fft,

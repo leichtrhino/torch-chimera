@@ -53,7 +53,7 @@ def main():
     X = batch[:, 2, :, :, :]
     X_abs = torch.sqrt(torch.sum(X**2, dim=-1))
     X_phase = X / X_abs.clamp(min=1e-9).unsqueeze(-1)
-    x = torchaudio.functional.istft(
+    x = torch.istft(
         X, n_fft, hop_length, win_length
     )
 
@@ -63,12 +63,12 @@ def main():
     Shat_phase = misilayer(Shat_abs, Shat_phase, x)
     Shat = Shat_abs.unsqueeze(-1) * X_phase.unsqueeze(1)
 
-    s = torchaudio.functional.istft(
+    s = torch.istft(
         S.reshape(batch_size*2, freq_bins, spec_time, 2),
         n_fft, hop_length, win_length
     ).reshape(batch_size, 2, seconds * target_freq).transpose(0, 1) \
     .reshape(2, batch_size * seconds * target_freq)
-    shat = torchaudio.functional.istft(
+    shat = torch.istft(
         Shat.reshape(batch_size*2, freq_bins, spec_time, 2),
         n_fft, hop_length, win_length
     ).reshape(batch_size, 2, seconds * target_freq).transpose(0, 1) \

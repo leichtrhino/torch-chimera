@@ -18,16 +18,16 @@ Depicting with the following figure, the mixture of vocal and instruments music 
 
 ### Requirements
 
-* `ffmpeg` : 4.2
-* `numpy` : 1.18.4
+* `ffmpeg` : 4.3.1
+* `numpy` : 1.18.5
 * `pysocks` : 1.7.1
 * `pysoundfile` : 0.10.2
-* `python` : 3.7.6
-* `pytorch` : 1.5.0
+* `python` : 3.7.10
+* `pytorch` : 1.9.0
 * `resampy` : 0.2.2
-* `scikit-learn` : 0.21.3
+* `scikit-learn` : 0.23.2
 * `scipy` : 1.4.1
-* `torchaudio` : 0.5.0
+* `torchaudio` : 0.9.0
 
 See `requirements.txt` for more information.
 

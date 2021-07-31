@@ -56,7 +56,7 @@ class PitchShift(torch.nn.Module):
             x, n_fft, hop_length=n_fft//4,
             window=torch.hann_window(n_fft)
         )
-        self.istft = lambda x: torchaudio.functional.istft(
+        self.istft = lambda x: torch.istft(
             x, n_fft, hop_length=n_fft//4,
             window=torch.hann_window(n_fft)
         )

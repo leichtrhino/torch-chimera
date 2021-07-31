@@ -53,12 +53,12 @@ def main():
     Shat_abs = mask * X_abs.unsqueeze(1)
     Shat = Shat_abs.unsqueeze(-1) * X_phase.unsqueeze(1)
 
-    s = torchaudio.functional.istft(
+    s = torch.istft(
         S.reshape(batch_size*2, freq_bins, spec_time, 2),
         n_fft, hop_length, win_length
     ).reshape(batch_size, 2, seconds * target_freq).transpose(0, 1) \
     .reshape(2, batch_size * seconds * target_freq)
-    shat = torchaudio.functional.istft(
+    shat = torch.istft(
         Shat.reshape(batch_size*2, freq_bins, spec_time, 2),
         n_fft, hop_length, win_length
     ).reshape(batch_size, 2, seconds * target_freq).transpose(0, 1) \
