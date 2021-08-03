@@ -139,7 +139,7 @@ def load_model(checkpoint_path, model_type, **kwargs):
         loaded_model = AdaptedChimeraMagPhasebookWithMisi(
             chimera, loaded_misi, kwargs['stft_setting'])
         loaded_model.load_state_dict(checkpoint['model']['state_dict'])
-        if kwargs['n_misi_layer'] is None:
+        if kwargs.get('n_misi_layer', None) is None:
             pass
         elif kwargs['n_misi_layer'] < len(loaded_misi.misi_layers):
             loaded_misi.misi_layers =\
