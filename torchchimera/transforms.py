@@ -76,24 +76,29 @@ class PitchShift(torch.nn.Module):
         x_target = self.istft(spec_target)
         return self.resample(x_target)
 
-class RandomCrop(torch.nn.Module):
+class RandomPadOrCrop(torch.nn.Module):
     def __init__(self, waveform_length):
-        super(RandomCrop, self).__init__()
+        super(RandomPadOrCrop, self).__init__()
         self.waveform_length = waveform_length
 
     def forward(self, x):
         if x.shape[-1] < self.waveform_length:
+            if len(x.shape) == 1:
+                x = x.unsqueeze(0)
+
             offset = random.randint(0, self.waveform_length-x.shape[-1])
             # pad reflect
             pad_begin = x.repeat((1, math.ceil(offset / x.shape[-1])))[
-                :, math.ceil(offset / x.shape[-1]) * x.shape[-1] - offset:
+                ..., math.ceil(offset / x.shape[-1]) * x.shape[-1] - offset:
             ]
             offset_end = self.waveform_length-offset-x.shape[-1]
             pad_end = x.repeat((1, math.ceil(offset_end / x.shape[-1])))[
-                :, :offset_end
+                ..., :offset_end
             ]
-            x = torch.cat((pad_begin, x, pad_end), dim=-1)
+            x = torch.cat((pad_begin, x, pad_end), dim=-1).squeeze()
         elif x.shape[-1] > self.waveform_length:
             offset = random.randint(0, x.shape[-1]-self.waveform_length)
-            x = x[:, offset:offset+self.waveform_length]
+            x = x[..., offset:offset+self.waveform_length]
         return x
+
+
