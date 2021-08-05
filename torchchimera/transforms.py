@@ -65,7 +65,7 @@ class PitchShift(torch.nn.Module):
             n_freq=(n_fft//2)+1,
             fixed_rate=shift_rate
         )
-        self.resample = torchaudio.transforms.Resample(
+        self.resample = Resample(
             orig_freq=sampling_rate/shift_rate,
             new_freq=sampling_rate
         )
