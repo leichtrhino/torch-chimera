@@ -49,6 +49,21 @@ class MixTransform(torch.nn.Module):
             for sl, sc in zip(self.source_lists, self.source_coeffs)
         ], dim=-2)
 
+class RandomScale(torch.nn.Module):
+    def __init__(self):
+        super(RandomScale, self).__init__()
+
+    def forward(self, x):
+        source_amplitude = torch.max(x.abs(), dim=-1, keepdim=True)[0]
+        scale = 10 ** (torch.rand(
+            (*x.shape[:-1], 1), device=x.device) * -10 / 10)
+        return x * scale\
+            / torch.where(
+                source_amplitude > .1,
+                source_amplitude,
+                torch.ones_like(source_amplitude)
+            )
+
 class PitchShift(torch.nn.Module):
     def __init__(self, sampling_rate, shift_rate, n_fft=512):
         super(PitchShift, self).__init__()
