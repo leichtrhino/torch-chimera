@@ -117,3 +117,44 @@ class RandomPadOrCrop(torch.nn.Module):
         return x
 
 
+def build_transform(orig_freq, new_freq, stft_setting, waveform_length):
+    time_stretch_rate = random.uniform(0.7, 1.3)
+    pitch_shift_rate = random.uniform(0.7, 1.3)
+    transforms = [
+        PitchShift(orig_freq, pitch_shift_rate, n_fft=stft_setting.n_fft),
+        lambda x: torch.stft(
+            x,
+            stft_setting.n_fft,
+            stft_setting.hop_length,
+            stft_setting.win_length,
+        ),
+        torchaudio.transforms.TimeStretch(
+            hop_length=stft_setting.hop_length,
+            fixed_rate=time_stretch_rate,
+            n_freq=stft_setting.n_fft//2+1
+        ),
+        lambda x: torch.istft(
+            x,
+            stft_setting.n_fft,
+            stft_setting.hop_length,
+            stft_setting.win_length,
+        ),
+        Resample(float(orig_freq), float(new_freq)),
+        RandomScale(),
+    ]
+    if waveform_length is not None:
+        transforms.append(RandomPadOrCrop(waveform_length))
+    return Compose(transforms)
+
+class CombinedRandomTransform(torch.nn.Module):
+    def __init__(self, orig_sr, target_sr, stft_setting, waveform_length):
+        super(CombinedRandomTransform, self).__init__()
+        self.orig_sr = orig_sr
+        self.target_sr = target_sr
+        self.stft_setting = stft_setting
+        self.waveform_length = waveform_length
+    def forward(self, x):
+        return build_transform(
+            self.orig_sr, self.target_sr,
+            self.stft_setting, self.waveform_length
+        )(x)
