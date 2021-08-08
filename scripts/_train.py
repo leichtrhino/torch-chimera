@@ -12,6 +12,7 @@ except:
     sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     import torchchimera
 from torchchimera.datasets import FolderTuple
+from torchchimera.transforms import CombinedRandomTransform
 
 from _model_io import build_model
 from _model_io import build_optimizer
@@ -87,7 +88,18 @@ def validate_training_argument(args, parser):
 
 def train(args):
     # build dataset
-    train_dataset = FolderTuple(args.train_dir, args.sr, args.segment_duration)
+    train_dataset = FolderTuple(
+        args.train_dir,
+        args.sr*2,
+        args.segment_duration,
+        transform=CombinedRandomTransform(
+            args.sr*2,
+            args.sr,
+            args.stft_setting,
+            int(args.segment_duration * args.sr)
+            if args.segment_duration is not None else None
+        )
+    )
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.compute_batch_size, shuffle=True
     )
