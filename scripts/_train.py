@@ -178,17 +178,16 @@ def train(args):
         model.train()
         for step, batch in enumerate(train_loader, 1):
             batch = batch.to(args.device)
-            if not args.sync:
 
-                scale = 10 ** (torch.rand(
-                    *batch.shape[:-1], device=args.device) * -10 / 10)
-                scale /= torch.max(batch.abs(), dim=-1)[0].clamp(min=1e-32)
-                scale_mix = 10 ** (torch.rand(
-                    batch.shape[0], device=args.device) * -1 / 10)\
-                    / (scale.unsqueeze(-1) * batch).sum(dim=1).abs().max(dim=-1)[0]
-                #scale_mix = torch.min(scale_mix, torch.ones_like(scale_mix))
-                scale *= scale_mix.unsqueeze(-1)
-                batch *= scale.unsqueeze(-1)
+            mix_amplitude = batch.sum(dim=1, keepdim=True)\
+                                 .abs().max(dim=-1, keepdim=True)[0]
+            scale_mix = 10 ** (torch.rand(
+                (batch.shape[0], 1, 1), device=args.device) * -5 / 10)
+            batch *= torch.where(
+                mix_amplitude > .1,
+                scale_mix / mix_amplitude,
+                torch.ones_like(mix_amplitude)
+            )
 
             y_pred = model(batch.sum(dim=1))
             loss = compute_loss(batch, y_pred, args.stft_setting,
@@ -231,16 +230,14 @@ def train(args):
                 for batch in validation_loader:
 
                     batch = batch.to(args.device)
-                    scale = 1. / torch.max(
-                        batch.abs(), dim=-1)[0].clamp(min=1e-32)
 
-                    scale_mix = 0.9999 / torch.max(
-                        torch.sum(scale.unsqueeze(-1) * batch.abs(), dim=1),
-                        dim=-1
-                    )[0]
-                    scale_mix = torch.min(scale_mix, torch.ones_like(scale_mix))
-                    scale *= scale_mix.unsqueeze(-1)
-                    batch *= scale.unsqueeze(-1)
+                    source_amplitude = torch.max(batch.abs(), dim=-1, keepdim=True)[0]
+                    batch *= 1. \
+                        / torch.where(source_amplitude > .1, source_amplitude, torch.ones_like(source_amplitude))
+
+                    mix_amplitude = batch.sum(dim=1, keepdim=True).abs().max(dim=-1, keepdim=True)[0]
+                    batch *= 1. \
+                        / torch.where(mix_amplitude > .1, mix_amplitude, torch.ones_like(mix_amplitude))
 
                     y_pred = model(batch.sum(dim=1))
                     loss = compute_loss(batch, y_pred, args.stft_setting,
