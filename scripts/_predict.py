@@ -96,7 +96,7 @@ def predict(args):
     else:
         _, _, shat, _ = model(batch)
 
-    if shat.shape[0] > 1:
+    if len(shat.shape) > 1:
         shat = shat.transpose(0, 1)
     else:
         shat = shat.squeeze(0)
