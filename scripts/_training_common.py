@@ -179,7 +179,7 @@ def compute_loss(s, y_pred, stft_setting,
     elif loss_function == 'chimera++-wa':
         Y = dc_label_matrix(S)
         weight = dc_weight_matrix(X)
-        alpha = 0.5
+        alpha = 0.975
         loss_dc = alpha * loss_dc_deep_lda(embd, Y, weight)
         waveform_length = min(s.shape[-1], shat.shape[-1])
         s = s[:, :, :waveform_length]
