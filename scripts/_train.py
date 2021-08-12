@@ -1,9 +1,11 @@
 
 import os
 import sys
+import random
 from itertools import chain
 
 import torch
+import torchaudio
 
 try:
     import torchchimera
@@ -87,6 +89,7 @@ def validate_training_argument(args, parser):
     return args
 
 def train(args):
+    torchaudio.set_audio_backend('soundfile')
     # build dataset
     train_dataset = FolderTuple(
         args.train_dir,
@@ -101,13 +104,15 @@ def train(args):
         )
     )
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.compute_batch_size, shuffle=True
+        train_dataset, batch_size=args.compute_batch_size, shuffle=True,
+        num_workers=4, worker_init_fn=lambda x: random.seed()
     )
     if args.validation_dir is not None:
         validation_dataset = FolderTuple(
             args.validation_dir, args.sr, args.segment_duration)
         validation_loader = torch.utils.data.DataLoader(
-            validation_dataset, batch_size=args.compute_batch_size, shuffle=False
+            validation_dataset, batch_size=args.compute_batch_size,
+            shuffle=False, num_workers=4
         )
 
     # build (and load) a model
