@@ -52,10 +52,10 @@ def main():
             S = batch[:, :2, :, :, :]
             X_abs = torch.sqrt(torch.sum(X**2, dim=-1))
             X_phase = X / X_abs.clamp(min=1e-12).unsqueeze(-1)
-            x = torchaudio.functional.istft(
+            x = torch.istft(
                 X, n_fft, hop_length, win_length
             )
-            s = torchaudio.functional.istft(
+            s = torch.istft(
                 S.reshape(batch.shape[0]*2, freq_bins, spec_time, 2),
                 n_fft, hop_length, win_length
             ).reshape(batch.shape[0], 2, seconds * target_freq)
@@ -78,7 +78,7 @@ def main():
                 for i in range(epoch - initial_epoch):
                     l = MisiLayer(n_fft, hop_length, win_length)
                     phasehat = l(amphat, phasehat, x)
-                shat = torchaudio.functional.istft(
+                shat = torch.istft(
                     (amphat.unsqueeze(-1)*phasehat).reshape(batch.shape[0]*2, freq_bins, spec_time, 2),
                     n_fft, hop_length, win_length
                 ).reshape(batch.shape[0], 2, seconds * target_freq)

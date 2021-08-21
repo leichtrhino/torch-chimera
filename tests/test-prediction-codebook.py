@@ -27,7 +27,7 @@ def main():
         n_fft, hop_length, win_length,
         window=torch.hann_window(n_fft)
     ).reshape(*x.shape[:-1], freq_bins, spec_time, 2)
-    istft = lambda X: torchaudio.functional.istft(
+    istft = lambda X: torch.istft(
         X.reshape(X.shape[:-3].numel(), freq_bins, spec_time, 2),
         n_fft, hop_length, win_length,
         window=torch.hann_window(n_fft)
@@ -66,7 +66,7 @@ def main():
     X = batch[:, 2, :, :, :]
     X_abs = torch.sqrt(torch.sum(X**2, dim=-1))
     X_phase = X / X_abs.clamp(min=1e-9).unsqueeze(-1)
-    x = torchaudio.functional.istft(
+    x = torch.istft(
         X, n_fft, hop_length, win_length,
         window=torch.hann_window(n_fft)
     )
@@ -75,7 +75,7 @@ def main():
     com = com.detach()
     Shat = comp_mul(com, X.unsqueeze(1))
     shat = misi_layer(Shat, x)
-    s = torchaudio.functional.istft(
+    s = torch.istft(
         S.reshape(batch_size*2, freq_bins, spec_time, 2),
         n_fft, hop_length, win_length,
         window=torch.hann_window(n_fft)

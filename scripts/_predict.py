@@ -59,7 +59,7 @@ def predict(args):
 
     # load a model
     model, update_args = load_model(
-        args.input_checkpoint, 'ChimeraMagPhasebook',
+        args.input_checkpoint, None,
         stft_setting=args.stft_setting
     )
     if args.bin_num != update_args['bin_num']:
@@ -96,7 +96,7 @@ def predict(args):
     else:
         _, _, shat, _ = model(batch)
 
-    if shat.shape[0] > 1:
+    if len(shat.shape) > 1:
         shat = shat.transpose(0, 1)
     else:
         shat = shat.squeeze(0)

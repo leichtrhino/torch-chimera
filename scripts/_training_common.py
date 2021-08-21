@@ -56,7 +56,7 @@ class Istft(torch.nn.Module):
 
     def forward(self, x):
         freq, time = x.shape[-3], x.shape[-2]
-        y = torchaudio.functional.istft(
+        y = torch.istft(
             x.reshape(x.shape[:-3].numel(), freq, time, 2),
             self.stft_setting.n_fft,
             self.stft_setting.hop_length,
@@ -87,6 +87,31 @@ class AdaptedChimeraMagPhasebook(torch.nn.Module):
         embd, (com,), out_status = self.chimera(
             10 * torch.log10(torch.sum(X**2, dim=-1).clamp(min=1e-40)),
             states=states, outputs=['com']
+        )
+        shat = istft(comp_mul(com, X.unsqueeze(1)))
+        return embd, com, shat, out_status
+
+class AdaptedChimeraCombook(torch.nn.Module):
+    def __init__(self, chimera, stft_setting):
+        super(AdaptedChimeraCombook, self).__init__()
+        self.chimera = chimera
+        self.stft_setting = stft_setting
+
+    def forward(self, x, states=None):
+        def comp_mul(X, Y):
+            (X_re, X_im), (Y_re, Y_im) = X.unbind(-1), Y.unbind(-1)
+            return torch.stack((
+                X_re * Y_re - X_im * Y_im,
+                X_re * Y_im + X_im * Y_re
+            ), dim=-1)
+        stft = Stft(self.stft_setting)
+        istft = Istft(self.stft_setting)
+
+        X = stft(x)
+
+        embd, com, out_status = self.chimera(
+            10 * torch.log10(torch.sum(X**2, dim=-1).clamp(min=1e-40)),
+            states=states
         )
         shat = istft(comp_mul(com, X.unsqueeze(1)))
         return embd, com, shat, out_status
@@ -154,7 +179,7 @@ def compute_loss(s, y_pred, stft_setting,
     elif loss_function == 'chimera++-wa':
         Y = dc_label_matrix(S)
         weight = dc_weight_matrix(X)
-        alpha = 0.5
+        alpha = 0.975
         loss_dc = alpha * loss_dc_deep_lda(embd, Y, weight)
         waveform_length = min(s.shape[-1], shat.shape[-1])
         s = s[:, :, :waveform_length]

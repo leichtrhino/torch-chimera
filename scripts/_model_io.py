@@ -8,14 +8,30 @@ except:
     sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     import torchchimera
 from torchchimera.models.chimera import ChimeraMagPhasebook
+from torchchimera.models.chimera import ChimeraCombook
 from torchchimera.models.misi import TrainableMisiNetwork
 
 from _training_common import AdaptedChimeraMagPhasebook
+from _training_common import AdaptedChimeraCombook
 from _training_common import AdaptedChimeraMagPhasebookWithMisi
 
 def build_model(model_type, **kwargs):
-    if model_type not in ('ChimeraMagPhasebook', 'ChimeraMagPhasebookWithMisi'):
+    if model_type not in ('ChimeraMagPhasebook',
+                          'ChimeraMagPhasebookWithMisi',
+                          'ChimeraCombook'):
         raise RuntimeError(f'model type "{model_type}" is not available')
+    if model_type == 'ChimeraCombook':
+        chimera = ChimeraCombook(
+            kwargs['bin_num'],
+            kwargs['n_channel'],
+            kwargs['embedding_dim'],
+            N=kwargs['n_hidden'],
+            num_layers=kwargs['n_lstm_layer'],
+            residual_base=kwargs['residual']
+        )
+        model = AdaptedChimeraCombook(chimera, kwargs['stft_setting'])
+        return model
+
     chimera = ChimeraMagPhasebook(
         kwargs['bin_num'],
         kwargs['n_channel'],
@@ -40,9 +56,40 @@ def build_optimizer(model, **kwargs):
 
 def load_model(checkpoint_path, model_type, **kwargs):
     if model_type is not None and \
-       model_type not in ('ChimeraMagPhasebook', 'ChimeraMagPhasebookWithMisi'):
+       model_type not in ('ChimeraMagPhasebook',
+                          'ChimeraMagPhasebookWithMisi',
+                          'ChimeraCombook'):
         raise RuntimeError(f'model type "{model_type}" is not available')
     checkpoint = torch.load(checkpoint_path)
+
+    # HACK: early out if the model_type is ChimeraCombook
+    if (model_type == None or model_type == 'ChimeraCombook') and\
+       checkpoint['model']['type'] == 'ChimeraCombook':
+        chimera = ChimeraCombook(
+        checkpoint['model']['parameter']['bin_num'],
+            checkpoint['model']['parameter']['n_channel'],
+            checkpoint['model']['parameter']['embedding_dim'],
+            N=checkpoint['model']['parameter']['n_hidden'],
+            num_layers=checkpoint['model']['parameter']['n_lstm_layer'],
+            residual_base=checkpoint['model']['parameter']['residual_base'],
+        )
+        model = AdaptedChimeraCombook(chimera, kwargs['stft_setting'])
+        model.load_state_dict(checkpoint['model']['state_dict'])
+
+        update_args = {
+            'model_type': model_type if model_type else checkpoint['model']['type'],
+            'bin_num': checkpoint['model']['parameter']['bin_num'],
+            'n_channel': checkpoint['model']['parameter']['n_channel'],
+            'embedding_dim': checkpoint['model']['parameter']['embedding_dim'],
+            'n_hidden': checkpoint['model']['parameter']['n_hidden'],
+            'n_lstm_layer': checkpoint['model']['parameter']['n_lstm_layer'],
+            'residual': checkpoint['model']['parameter']['residual_base'],
+            'n_misi_layer': kwargs.get('n_misi_layer', None) \
+            if kwargs.get('n_misi_layer', None) is not None
+            else checkpoint['model']['parameter']['n_misi_layer'],
+        }
+        return model, update_args
+
     chimera = ChimeraMagPhasebook(
         checkpoint['model']['parameter']['bin_num'],
         checkpoint['model']['parameter']['n_channel'],
@@ -92,7 +139,7 @@ def load_model(checkpoint_path, model_type, **kwargs):
         loaded_model = AdaptedChimeraMagPhasebookWithMisi(
             chimera, loaded_misi, kwargs['stft_setting'])
         loaded_model.load_state_dict(checkpoint['model']['state_dict'])
-        if kwargs['n_misi_layer'] is None:
+        if kwargs.get('n_misi_layer', None) is None:
             pass
         elif kwargs['n_misi_layer'] < len(loaded_misi.misi_layers):
             loaded_misi.misi_layers =\
@@ -140,6 +187,8 @@ def save_checkpoint(model, optimizer, checkpoint_path, **kwargs):
                 if type(model) == AdaptedChimeraMagPhasebook
                 else 'ChimeraMagPhasebookWithMisi'
                 if type(model) == AdaptedChimeraMagPhasebookWithMisi
+                else 'ChimeraCombook'
+                if type(model) == AdaptedChimeraCombook
                 else None,
                 'parameter': {
                     'n_hidden': kwargs['n_hidden'],

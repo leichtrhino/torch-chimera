@@ -33,11 +33,16 @@ def loss_dc_whitened(embd, label, weight=None):
         weight = torch.sqrt(weight).unsqueeze(-1)
         embd = embd * weight
         label = label * weight
+
     C = label.shape[2]
     D = embd.shape[2]
-    VtV = embd.transpose(1, 2).bmm(embd) + 1e-24 * torch.eye(D)
+
+    VtV = embd.transpose(1, 2).bmm(embd) \
+        + 1e-24 * torch.eye(D, device=label.device)
     VtY = embd.transpose(1, 2).bmm(label)
-    YtY = label.transpose(1, 2).bmm(label) + 1e-24 * torch.eye(C)
+    YtY = label.transpose(1, 2).bmm(label) \
+        + 1e-24 * torch.eye(C, device=label.device)
+
     return D - torch.trace(torch.sum(
         VtV.inverse().bmm(VtY).bmm(YtY.inverse()).bmm(VtY.transpose(1, 2)),
         dim=0
