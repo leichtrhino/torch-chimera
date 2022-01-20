@@ -19,6 +19,7 @@ Depicting with the following figure, the mixture of vocal and instruments music 
 ### Requirements
 
 * `ffmpeg` : 4.3.1
+* `museval` : 0.4.0
 * `numpy` : 1.18.5
 * `pysocks` : 1.7.1
 * `pysoundfile` : 0.10.2
