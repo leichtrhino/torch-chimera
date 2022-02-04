@@ -1,6 +1,9 @@
 
 import os
 import sys
+import math
+import numpy as np
+import museval
 
 import torch
 try:
@@ -62,47 +65,75 @@ def evaluate(args):
     model.to(args.device)
     model.eval()
 
-    if args.permutation_free:
-        eval_snr = torchchimera.metrics.permutation_free(
-            torchchimera.metrics.eval_snr, aggregate_functionn=max
-        )
-        eval_si_sdr = torchchimera.metrics.permutation_free(
-            torchchimera.metrics.eval_si_sdr, aggregate_function=max
-        )
-    else:
-        eval_snr = torchchimera.metrics.eval_snr
-        eval_si_sdr = torchchimera.metrics.eval_si_sdr
-
     # evaluation loop
     if args.output_file is None:
         of = sys.stdout
     else:
         of = open(args.output_file, 'w')
-    print('segment,channel,snr,si-sdr', file=of)
-    with torch.no_grad():
-        for batch_i, s in enumerate(loader, 0):
-            scale = torch.sqrt(
-                s.shape[-1] / torch.sum(s**2, dim=-1).clamp(min=1e-32)
+
+    # evaluation
+    sample_segment_length = int(args.sr * args.segment_duration)
+    print('sample_i,sdr,isr,sir,sar', file=args.output_file)
+    for sample_i, sample in enumerate(loader):
+        sample = sample.flatten(0, -2)
+        sample_sum = sample.sum(dim=0)
+
+        # divide into batches
+        orig_length = sample_sum.shape[-1]
+        sample_num = math.ceil(sample_sum.shape[-1] / sample_segment_length)
+
+        batch = torch.cat((
+            sample_sum,
+            torch.zeros(
+                *sample_sum.shape[:-1],
+                sample_segment_length * sample_num - sample_sum.shape[-1]
             )
-            scale_mix = 1. / torch.max(
-                torch.sum(scale.unsqueeze(-1) * s, dim=1).abs(), dim=-1
-            )[0]
-            scale_mix = torch.min(scale_mix, torch.ones_like(scale_mix))
-            scale *= scale_mix.unsqueeze(-1)
-            s *= scale.unsqueeze(-1) * 0.98
-            s = s.to(args.device)
+        ), dim=-1).reshape(
+            *sample_sum.shape[:-1], sample_num, sample_segment_length
+        )
 
-            _, _, shat, _ = model(s.sum(dim=1))
-            waveform_length = min(s.shape[-1], shat.shape[-1])
-            s = s[:, :, :waveform_length]
-            shat = shat[:, :, :waveform_length]
+        out_tensor = None
+        for batch_i in range(0, batch.shape[0], args.batch_size):
+            batch_end_i = min(batch_i + args.batch_size, batch.shape[0])
+            b = batch[batch_i:batch_end_i]
+            with torch.no_grad():
+                _, _, s_hat, _ = model(b.to(args.device))
+                s_hat = s_hat.cpu().transpose(0, 1).flatten(1, -1)
 
-            snr = eval_snr(shat, s)
-            si_sdr = eval_si_sdr(shat, s)
-            for i, (_snr, _si_sdr) in enumerate(zip(snr, si_sdr), 1):
-                sample_i = batch_i * args.batch_size + i
-                for channel_i, (__snr, __si_sdr) in \
-                    enumerate(zip(_snr, _si_sdr), 1):
-                    print(f'{sample_i},{channel_i},{__snr},{__si_sdr}', file=of)
+            if out_tensor is None:
+                out_tensor = s_hat
+            else:
+                out_tensor = torch.cat((out_tensor, s_hat), dim=-1)
+
+        # align input and output
+        print(sample.shape, out_tensor.shape)
+        out_length = min(orig_length, out_tensor.shape[-1])
+        sample = sample[..., :out_length]
+        s_hat = out_tensor[..., :out_length]
+        # find the combination of signs that satisfies minimum error
+        s_hat_sig = []
+        for sample_, s_hat_ in zip(sample, s_hat):
+            if torch.sum((sample_ - s_hat_) ** 2) \
+               < torch.sum((sample_ + s_hat_) ** 2):
+                s_hat_sig.append(s_hat_)
+            else:
+                s_hat_sig.append(-s_hat_)
+        s_hat = torch.stack(s_hat_sig, dim=0)
+
+        # evaluate by museval.evaluate
+        SDR, ISR, SIR, SAR = museval.evaluate(
+            sample.unsqueeze(-1).numpy(),
+            s_hat.unsqueeze(-1).numpy(),
+            win=args.sr * 1,
+            hop=args.sr * 1
+        )
+
+        # write to output
+        for sdr, isr, sir, sar in zip(SDR, ISR, SIR, SAR):
+            print(
+                f'{sample_i},{np.nanmedian(sdr)},{np.nanmedian(isr)},{np.nanmedian(sir)},{np.nanmedian(sar)}',
+                file=of
+            )
+
     of.close()
 
