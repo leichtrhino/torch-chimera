@@ -41,18 +41,18 @@ def validate_evaluation_io_argument(args, parser):
 
 def evaluate(args):
     # build dataset
-    dataset = FolderTuple(args.data_dir, args.sr, args.segment_duration)
+    dataset = FolderTuple(args.data_dir, args.sr)
     loader = torch.utils.data.DataLoader(
         dataset, batch_size=args.batch_size, shuffle=False
     )
 
     # load a model
     model, update_args = load_model(
-        args.input_checkpoint, 'ChimeraMagPhasebook',
+        args.input_checkpoint, None,
         stft_setting=args.stft_setting
     )
     if args.bin_num != update_args['bin_num']:
-        bin_num = checkpoint['model']['parameter']['bin_num']
+        bin_num = update_args['bin_num']
         raise RuntimeError(
             'the number of fft bin of input model and parameter are different '
             f'--n-fft {(bin_num-1)*2} would work'
@@ -73,7 +73,7 @@ def evaluate(args):
 
     # evaluation
     sample_segment_length = int(args.sr * args.segment_duration)
-    print('sample_i,sdr,isr,sir,sar', file=args.output_file)
+    print('sample_i,channel_i,sdr,isr,sir,sar', file=args.output_file)
     for sample_i, sample in enumerate(loader):
         sample = sample.flatten(0, -2)
         sample_sum = sample.sum(dim=0)
@@ -106,7 +106,6 @@ def evaluate(args):
                 out_tensor = torch.cat((out_tensor, s_hat), dim=-1)
 
         # align input and output
-        print(sample.shape, out_tensor.shape)
         out_length = min(orig_length, out_tensor.shape[-1])
         sample = sample[..., :out_length]
         s_hat = out_tensor[..., :out_length]
@@ -118,7 +117,7 @@ def evaluate(args):
                 s_hat_sig.append(s_hat_)
             else:
                 s_hat_sig.append(-s_hat_)
-        s_hat = torch.stack(s_hat_sig, dim=0)
+        #s_hat = torch.stack(s_hat_sig, dim=0)
 
         # evaluate by museval.evaluate
         SDR, ISR, SIR, SAR = museval.evaluate(
@@ -129,9 +128,10 @@ def evaluate(args):
         )
 
         # write to output
-        for sdr, isr, sir, sar in zip(SDR, ISR, SIR, SAR):
+        for channel_i, (sdr, isr, sir, sar) in \
+            enumerate(zip(SDR, ISR, SIR, SAR)):
             print(
-                f'{sample_i},{np.nanmedian(sdr)},{np.nanmedian(isr)},{np.nanmedian(sir)},{np.nanmedian(sar)}',
+                f'{sample_i},{channel_i},{np.nanmedian(sdr)},{np.nanmedian(isr)},{np.nanmedian(sir)},{np.nanmedian(sar)}',
                 file=of
             )
 
